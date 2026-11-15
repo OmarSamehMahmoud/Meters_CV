@@ -51,7 +51,9 @@ def split_frame(df):
     if "split" in df.columns and df["split"].fillna("").astype(str).str.len().gt(0).all():
         return (df[df.split=="train"],df[df.split=="val"],df[df.split=="test"])
     groups=df["meter_id"].astype(str) if "meter_id" in df else df["image_path"].astype(str)
-    train_idx,temp_idx=next(GroupShuffleSplit(n_splits=1,test_size=0.30,random_state=SEED).split(df,groups=groups))
+    if groups.nunique()<3:
+        raise SystemExit("Need at least 3 distinct meter_id groups for train/validation/test without meter leakage. Prefer many more.")
+    train_idx=next(GroupShuffleSplit(n_splits=1,test_size=0.30,random_state=SEED).split(df,groups=groups))
     temp=df.iloc[temp_idx]; temp_groups=groups.iloc[temp_idx]
     val_rel,test_rel=next(GroupShuffleSplit(n_splits=1,test_size=0.50,random_state=SEED).split(temp,groups=temp_groups))
     return df.iloc[train_idx],temp.iloc[val_rel],temp.iloc[test_rel]
@@ -103,18 +105,22 @@ def main():
         for x,y in test_loader:
             pred=model(x.to(device)).argmax(1).cpu(); correct+=(pred==y).sum().item(); total+=len(y)
     # Also report full five-digit exact match, reconstructed in image-row order.
-    full_exact=0
+    full_exact=0; wheel_correct=np.zeros(5,dtype=np.int64); wheel_total=np.zeros(5,dtype=np.int64)
     with torch.no_grad():
         for row in test_df.to_dict("records"):
             truth="".join(str(int(row[f"digit_{i}"])) for i in range(1,6))
             crops=crop_five_digits(row["image_path"],profile)
             x=torch.from_numpy(np.stack(crops).astype(np.float32)/255.0)[:,None,:,:].to(device)
             # Match training preprocessing: CLAHE was already applied in crop_five_digits.
-            pred="".join(str(int(v)) for v in model(x).argmax(1).cpu().tolist())
+            pred_values=model(x).argmax(1).cpu().tolist()
+            pred="".join(str(int(v)) for v in pred_values)
+            truth_values=[int(row[f"digit_{i}"]) for i in range(1,6)]
+            for j,(pv,tv) in enumerate(zip(pred_values,truth_values)):
+                wheel_correct[j]+=int(pv==tv); wheel_total[j]+=1
             full_exact += int(pred==truth)
     metrics={"test_digit_accuracy":correct/max(1,total),"test_digit_count":total,
              "test_full_register_exact_match":full_exact/max(1,len(test_df)),
-             "test_full_register_count":len(test_df),"best_val_accuracy":best,
+             "test_full_register_count":len(test_df),\n             "per_wheel_accuracy":{f"wheel_{i+1}":float(wheel_correct[i]/max(1,wheel_total[i])) for i in range(5)},\n             "best_val_accuracy":best,
              "train_images":len(train_df),"val_images":len(val_df),"test_images":len(test_df),
              "split_unit":"meter_id","device":device}
     (out/"metrics.json").write_text(json.dumps(metrics,indent=2),encoding="utf-8")
