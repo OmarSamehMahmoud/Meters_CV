@@ -1,0 +1,1 @@
+# External datasets\n\nDownloaded or third-party datasets belong here locally. Raw images are excluded from Git. Check each source license before training or redistribution.\n
