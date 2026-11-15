@@ -40,6 +40,24 @@ Run the baseline:
 python -m src.watermeter.cli --image data/raw/meter.jpg --profile configs/meter_profile.example.json --out runs/result.json
 ```
 
+
+## Run the PC image-upload application (first milestone)
+
+The interactive PC prototype is now available in `app.py`. It accepts a photo, lets you adjust the five-wheel register ROI, runs pretrained EasyOCR on that crop, marks the approximate dial regions with OpenCV, and exports a JSON result.
+
+Install and launch:
+
+```powershell
+py -3.11 -m venv .venv
+.venv\\Scripts\\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements-pc.txt
+streamlit run app.py
+```
+
+See [docs/pc_quickstart.md](docs/pc_quickstart.md) for the test procedure. EasyOCR downloads pretrained weights on first run. This is a PC OCR/CV prototype, not yet a custom-trained water-meter model. It deliberately does not calculate the fractional dial contribution until the four dial scales and pointer directions are calibrated. Every result must be manually checked.
+
+
 ## Important status
 
 This is an initial software baseline, **not a trained OCR model**. The digit recognizer is not implemented/trained yet. The dial estimator is heuristic and uncalibrated. The current profile coordinates are approximate and must be re-measured after the final rigid camera mount is installed. The pipeline intentionally returns `needs_review` and a null reading rather than fabricating a result.
