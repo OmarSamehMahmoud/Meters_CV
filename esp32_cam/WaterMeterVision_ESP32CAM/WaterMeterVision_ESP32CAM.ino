@@ -2,12 +2,9 @@
  * WaterMeterVision - AI Thinker ESP32-CAM
  * Standalone firmware foundation (no PC runtime, no web server).
  *
- * Phase 1: initialize OV2640, verify PSRAM, capture JPEG frames,
- * and report camera diagnostics through Serial Monitor.
- *
- * Meter recognition is intentionally not fabricated in this phase.
- * Digit and rotary-pointer algorithms will be added after validating
- * the camera image geometry on the physical meter.
+ * Current milestone: OV2640 capture, JPEG-to-RGB conversion, and an
+ * experimental red-pointer angle detector behind explicit calibration gates.
+ * The digit classifier and physical dial calibration are not yet available.
  */
 
 #include "esp_camera.h"
