@@ -62,3 +62,32 @@ Do not target a YOLO detector on the original AI Thinker ESP32-CAM. The practica
 ## Dataset rules
 
 Split by physical meter ID, never by random frames from the same meter. Include all digits and transitions, all dial positions around 360°, and realistic glare, shadow, dirt, blur and lighting changes. Do not use unvalidated readings for billing.
+
+## Digit recognition training (new)
+
+The repository now includes a compact PC-trained CNN for the five odometer windows:
+- `src/watermeter/digit_model.py`: compact 32x48 grayscale CNN.
+- `training/train_digits.py`: supervised training with meter-ID grouped splitting and per-digit + full-register exact-match evaluation.
+- `src/watermeter/digit_inference.py`: five-digit inference from a trained checkpoint.
+- `training/export_onnx.py`: ONNX export.
+- `docs/annotation_template.csv`: starter annotation schema.
+
+Install training dependencies:
+
+```powershell
+pip install -r requirements-train.txt
+```
+
+Create `data/labels/digit_labels.csv` using the schema in `training/README.md`, then train:
+
+```powershell
+python training/train_digits.py --csv data/labels/digit_labels.csv --profile configs/meter_profile.example.json --epochs 40 --out models/digit_cnn
+```
+
+Run inference once a checkpoint exists:
+
+```powershell
+python -m src.watermeter.cli --image data/raw/meter.jpg --profile configs/meter_profile.example.json --checkpoint models/digit_cnn/best.pt --out runs/result.json
+```
+
+The CLI still forces `needs_review` and null `reading_m3`: fractional dial calibration, rollover logic and end-to-end validation are not complete. Training code is ready, but no model weights or accuracy claims exist until a labeled dataset is supplied and training is run.
