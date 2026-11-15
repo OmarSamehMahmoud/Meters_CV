@@ -156,3 +156,6 @@ The manually measured, separate presets are stored in `configs/reference_presets
 The five black odometer digits were provisionally read as `00000` by the user. The user's provisional fractional dial interpretation was `0.0899 m³`; it is not model-validated ground truth. The four pointer-angle mappings and transition/rollover behavior still require validation.
 
 These two photographs show one physical meter only. They are sufficient for photo-specific ROI calibration and a controlled PC proof of concept, not for training or claiming a generalized digit-recognition model. Keep the original photos unchanged and store them locally under `data/reference/`.
+
+<img width="1536" height="1024" alt="a3ebfa6d-b555-4eca-8ec5-3ea021c1e369" src="https://github.com/user-attachments/assets/1e7c8c93-75a4-40b6-a3ac-6616263184b1" />
+
