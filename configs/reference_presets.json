@@ -30,10 +30,10 @@
         {
           "name": "x0.001",
           "center": [
-            0.2555,
+            0.1895,
             0.4977
           ],
-          "radius": 0.0981
+          "radius": 0.115
         },
         {
           "name": "x0.0001",
@@ -93,6 +93,7 @@
     "These ROIs were measured manually against the two supplied reference photos.",
     "The close and wide photos have different meter scale and framing; do not reuse one preset for the other.",
     "For the fixed ESP32-CAM installation, create a fresh calibration preset from the final mounted camera image.",
-    "Dial circles cover the printed dial faces; pointer interpretation remains experimental and must be calibrated separately."
+    "Dial circles cover the printed dial faces; pointer interpretation remains experimental and must be calibrated separately.",
+    "Corrected close-reference x0.001 dial center from the supplied close-up photo; it is the left-hand dial. x0.0001 is the bottom-center dial."
   ]
 }
