@@ -126,3 +126,14 @@ python training/augment_reference.py --input data/reference --output data/augmen
 Augmented copies are correlated views of the same two source photos. They are for testing crop/illumination stability only, not for training a general 0-9 classifier or claiming accuracy.
 
 Read docs/current_data_limitations.md before interpreting any results. The current goal is a fixed-layout PC proof of concept and a camera-capture demonstration for project approval. Production-grade digit recognition across tens of thousands of meters cannot be validated from two photographs of one physical meter.
+
+## Corrected reference-photo calibration (2026-11-15)
+
+The PC app now has separate measured ROI presets for the two supplied reference images:
+
+- Close framing: `WhatsApp Image 2026-11-12 at 3.15.33 PM.jpeg`
+- Wide framing: `WhatsApp Image 2026-11-12 at 3.15.32 PM.jpeg`
+
+Run the app, upload the matching photo, and select the corresponding framing in the sidebar. The green register rectangle and four orange dial circles are displayed before OCR. Fine-tuning controls are available for the digit rectangle and each dial center/radius. See [reference photo calibration](docs/reference_photo_calibration.md).
+
+These are photo-specific ROIs. Recalibrate after installing the ESP32-CAM in its final fixed position. Fractional dial values are not yet validated.
