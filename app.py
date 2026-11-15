@@ -46,10 +46,10 @@ def draw_calibration(image, roi, dials):
         cx = int(round(dial["center"][0] * w))
         cy = int(round(dial["center"][1] * h))
         radius = int(round(dial["radius"] * min(w, h)))
-        cv2.circle(canvas, (cx, cy), radius, (255, 170, 0), 2)
+        cv2.circle(canvas, (cx, cy), radius, (0, 165, 255), 2)
         cv2.drawMarker(canvas, (cx, cy), (0, 80, 255), cv2.MARKER_CROSS, 18, 2)
         cv2.putText(canvas, dial["name"], (cx - radius, cy - radius - 7),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.52, (255, 170, 0), 2, cv2.LINE_AA)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 165, 255), 2, cv2.LINE_AA)
     return canvas
 
 
