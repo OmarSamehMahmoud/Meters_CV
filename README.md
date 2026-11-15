@@ -91,3 +91,20 @@ python -m src.watermeter.cli --image data/raw/meter.jpg --profile configs/meter_
 ```
 
 The CLI still forces `needs_review` and null `reading_m3`: fractional dial calibration, rollover logic and end-to-end validation are not complete. Training code is ready, but no model weights or accuracy claims exist until a labeled dataset is supplied and training is run.
+
+
+## Fixed-camera approval prototype (current decision)
+
+No additional user photographs are required for the initial approval prototype. Use the two existing reference photographs as the only initial samples and assume a rigid, fixed camera-to-meter distance and fixed meter orientation.
+
+The five black odometer windows are provisionally labeled 00000 in both references. This is a provisional visual label, not a verified billing record. The four fractional dial values remain unverified.
+
+To create mild preprocessing robustness variants after placing the two existing photos in data/reference:
+
+```powershell
+python training/augment_reference.py --input data/reference --output data/augmented_reference --variants 20
+```
+
+Augmented copies are correlated views of the same two source photos. They are for testing crop/illumination stability only, not for training a general 0-9 classifier or claiming accuracy.
+
+Read docs/current_data_limitations.md before interpreting any results. The current goal is a fixed-layout PC proof of concept and a camera-capture demonstration for project approval. Production-grade digit recognition across tens of thousands of meters cannot be validated from two photographs of one physical meter.
