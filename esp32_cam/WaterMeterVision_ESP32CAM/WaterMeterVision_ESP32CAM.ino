@@ -12,6 +12,7 @@
 
 #include "esp_camera.h"
 #include <Arduino.h>
+#include <esp_arduino_version.h>
 
 // AI Thinker ESP32-CAM + OV2640 pin mapping
 #define PWDN_GPIO_NUM     32
@@ -53,8 +54,14 @@ static bool initializeCamera() {
   config.pin_pclk = PCLK_GPIO_NUM;
   config.pin_vsync = VSYNC_GPIO_NUM;
   config.pin_href = HREF_GPIO_NUM;
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
   config.pin_sccb_sda = SIOD_GPIO_NUM;
   config.pin_sccb_scl = SIOC_GPIO_NUM;
+#else
+  // ESP32 Arduino core 2.x uses the historical "sscb" spelling.
+  config.pin_sscb_sda = SIOD_GPIO_NUM;
+  config.pin_sscb_scl = SIOC_GPIO_NUM;
+#endif
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
 
