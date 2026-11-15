@@ -11,8 +11,13 @@
  */
 
 #include "esp_camera.h"
+#include "img_converters.h"
 #include <Arduino.h>
 #include <esp_arduino_version.h>
+#include <esp_heap_caps.h>
+#include "config/meter_config.h"
+#include "vision/red_pointer_detector.h"
+#include "meter/reading_engine.h"
 
 // AI Thinker ESP32-CAM + OV2640 pin mapping
 #define PWDN_GPIO_NUM     32
@@ -35,6 +40,9 @@
 
 static const uint32_t SERIAL_BAUD_RATE = 115200;
 static const uint32_t CAPTURE_INTERVAL_MS = 5000;
+static uint8_t *g_rgbBuffer = nullptr;
+static constexpr uint16_t FRAME_WIDTH = 320;
+static constexpr uint16_t FRAME_HEIGHT = 240;
 
 static bool initializeCamera() {
   camera_config_t config = {};
@@ -70,6 +78,10 @@ static bool initializeCamera() {
   config.frame_size = FRAMESIZE_QVGA;
   config.jpeg_quality = 12;
   config.fb_count = 1;
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  config.fb_location = CAMERA_FB_IN_PSRAM;
+  config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+#endif
 
   const esp_err_t result = esp_camera_init(&config);
   if (result != ESP_OK) {
@@ -88,6 +100,27 @@ static bool initializeCamera() {
   return true;
 }
 
+static void processMeterFrame(const uint8_t *rgb, uint16_t width, uint16_t height) {
+  MeterReadingResult result = {};
+  result.integerDigitsAvailable = false;
+  result.complete = false;
+
+  if (!METER_GEOMETRY_CALIBRATED) {
+    Serial.println("[CALIBRATION] Meter geometry is not configured.");
+    Serial.println("[CALIBRATION] Capture and inspect a frame from the final fixed camera mount.");
+    printMeterReading(result);
+    return;
+  }
+
+  for (uint8_t i = 0; i < ROTARY_DIAL_COUNT; ++i) {
+    result.dials[i] = detectRedPointer(
+        rgb, width, height, ROTARY_DIALS[i], ROTARY_ANGLE_CALIBRATED);
+  }
+
+  // No integer-digit model is bundled yet. Never synthesize the five digits.
+  printMeterReading(result);
+}
+
 static void captureDiagnosticFrame() {
   camera_fb_t *frame = esp_camera_fb_get();
 
@@ -96,16 +129,23 @@ static void captureDiagnosticFrame() {
     return;
   }
 
-  Serial.println("\n========== CAMERA FRAME ==========");
-  Serial.printf("Width       : %u px\n", frame->width);
-  Serial.printf("Height      : %u px\n", frame->height);
-  Serial.printf("Format      : %s\n",
+  Serial.println("\\n========== CAMERA FRAME ==========");
+  Serial.printf("Width       : %u px\\n", frame->width);
+  Serial.printf("Height      : %u px\\n", frame->height);
+  Serial.printf("Format      : %s\\n",
                 frame->format == PIXFORMAT_JPEG ? "JPEG" : "OTHER");
-  Serial.printf("Image bytes : %u\n", static_cast<unsigned int>(frame->len));
-  Serial.printf("PSRAM       : %s\n", psramFound() ? "AVAILABLE" : "NOT FOUND");
-  Serial.println("==================================");
-  Serial.println("Phase 1 only: camera capture verified; meter reading is not enabled yet.");
+  Serial.printf("Image bytes : %u\\n", static_cast<unsigned int>(frame->len));
+  Serial.printf("PSRAM       : %s\\n", psramFound() ? "AVAILABLE" : "NOT FOUND");
 
+  if (g_rgbBuffer == nullptr) {
+    Serial.println("[VISION] RGB buffer unavailable.");
+  } else if (!fmt2rgb888(frame->buf, frame->len, frame->format, g_rgbBuffer)) {
+    Serial.println("[VISION] JPEG-to-RGB conversion failed.");
+  } else {
+    processMeterFrame(g_rgbBuffer, frame->width, frame->height);
+  }
+
+  Serial.println("==================================");
   esp_camera_fb_return(frame);
 }
 
@@ -135,7 +175,19 @@ void setup() {
   }
 
   Serial.println("[CAMERA] OV2640 initialized successfully.");
-  Serial.println("[SYSTEM] Capturing a diagnostic frame every 5 seconds.");
+
+  const size_t rgbBytes = (size_t)FRAME_WIDTH * FRAME_HEIGHT * 3;
+  g_rgbBuffer = (uint8_t *)heap_caps_malloc(rgbBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (g_rgbBuffer == nullptr) {
+    g_rgbBuffer = (uint8_t *)heap_caps_malloc(rgbBytes, MALLOC_CAP_8BIT);
+  }
+  Serial.printf("[VISION] RGB buffer: %s (%u bytes)\\n",
+                g_rgbBuffer ? "READY" : "ALLOCATION FAILED",
+                static_cast<unsigned int>(rgbBytes));
+
+  Serial.println("[SYSTEM] Local processing every 5 seconds; output via Serial only.");
+  Serial.printf("[CONFIG] Geometry calibrated: %s\\n", METER_GEOMETRY_CALIBRATED ? "YES" : "NO");
+  Serial.printf("[CONFIG] Rotary angle calibrated: %s\\n", ROTARY_ANGLE_CALIBRATED ? "YES" : "NO");
 }
 
 void loop() {
