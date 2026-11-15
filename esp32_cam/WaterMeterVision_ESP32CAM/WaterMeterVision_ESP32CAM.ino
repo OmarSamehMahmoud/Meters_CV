@@ -126,13 +126,13 @@ static void captureDiagnosticFrame() {
     return;
   }
 
-  Serial.println("\\n========== CAMERA FRAME ==========");
-  Serial.printf("Width       : %u px\\n", frame->width);
-  Serial.printf("Height      : %u px\\n", frame->height);
-  Serial.printf("Format      : %s\\n",
+  Serial.println("\n========== CAMERA FRAME ==========");
+  Serial.printf("Width       : %u px\n", frame->width);
+  Serial.printf("Height      : %u px\n", frame->height);
+  Serial.printf("Format      : %s\n",
                 frame->format == PIXFORMAT_JPEG ? "JPEG" : "OTHER");
-  Serial.printf("Image bytes : %u\\n", static_cast<unsigned int>(frame->len));
-  Serial.printf("PSRAM       : %s\\n", psramFound() ? "AVAILABLE" : "NOT FOUND");
+  Serial.printf("Image bytes : %u\n", static_cast<unsigned int>(frame->len));
+  Serial.printf("PSRAM       : %s\n", psramFound() ? "AVAILABLE" : "NOT FOUND");
 
   if (g_rgbBuffer == nullptr) {
     Serial.println("[VISION] RGB buffer unavailable.");
@@ -178,13 +178,13 @@ void setup() {
   if (g_rgbBuffer == nullptr) {
     g_rgbBuffer = (uint8_t *)heap_caps_malloc(rgbBytes, MALLOC_CAP_8BIT);
   }
-  Serial.printf("[VISION] RGB buffer: %s (%u bytes)\\n",
+  Serial.printf("[VISION] RGB buffer: %s (%u bytes)\n",
                 g_rgbBuffer ? "READY" : "ALLOCATION FAILED",
                 static_cast<unsigned int>(rgbBytes));
 
   Serial.println("[SYSTEM] Local processing every 5 seconds; output via Serial only.");
-  Serial.printf("[CONFIG] Geometry calibrated: %s\\n", METER_GEOMETRY_CALIBRATED ? "YES" : "NO");
-  Serial.printf("[CONFIG] Rotary angle calibrated: %s\\n", ROTARY_ANGLE_CALIBRATED ? "YES" : "NO");
+  Serial.printf("[CONFIG] Geometry calibrated: %s\n", METER_GEOMETRY_CALIBRATED ? "YES" : "NO");
+  Serial.printf("[CONFIG] Rotary angle calibrated: %s\n", ROTARY_ANGLE_CALIBRATED ? "YES" : "NO");
 }
 
 void loop() {
