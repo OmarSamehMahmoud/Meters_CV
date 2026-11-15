@@ -1,0 +1,13 @@
+__pycache__/
+.venv/
+venv/
+*.pyc
+runs/
+data/raw/*
+data/labels/*
+models/*.tflite
+models/*.onnx
+models/*.pt
+!data/raw/.gitkeep
+!data/labels/.gitkeep
+!models/.gitkeep
