@@ -120,7 +120,9 @@ def main():
             full_exact += int(pred==truth)
     metrics={"test_digit_accuracy":correct/max(1,total),"test_digit_count":total,
              "test_full_register_exact_match":full_exact/max(1,len(test_df)),
-             "test_full_register_count":len(test_df),\n             "per_wheel_accuracy":{f"wheel_{i+1}":float(wheel_correct[i]/max(1,wheel_total[i])) for i in range(5)},\n             "best_val_accuracy":best,
+             "test_full_register_count":len(test_df),
+             "per_wheel_accuracy":{f"wheel_{i+1}":float(wheel_correct[i]/max(1,wheel_total[i])) for i in range(5)},
+             "best_val_accuracy":best,
              "train_images":len(train_df),"val_images":len(val_df),"test_images":len(test_df),
              "split_unit":"meter_id","device":device}
     (out/"metrics.json").write_text(json.dumps(metrics,indent=2),encoding="utf-8")
