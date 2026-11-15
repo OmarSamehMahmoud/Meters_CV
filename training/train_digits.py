@@ -102,7 +102,19 @@ def main():
     with torch.no_grad():
         for x,y in test_loader:
             pred=model(x.to(device)).argmax(1).cpu(); correct+=(pred==y).sum().item(); total+=len(y)
-    metrics={"test_digit_accuracy":correct/max(1,total),"test_digit_count":total,"best_val_accuracy":best,
+    # Also report full five-digit exact match, reconstructed in image-row order.
+    full_exact=0
+    with torch.no_grad():
+        for row in test_df.to_dict("records"):
+            truth="".join(str(int(row[f"digit_{i}"])) for i in range(1,6))
+            crops=crop_five_digits(row["image_path"],profile)
+            x=torch.from_numpy(np.stack(crops).astype(np.float32)/255.0)[:,None,:,:].to(device)
+            # Match training preprocessing: CLAHE was already applied in crop_five_digits.
+            pred="".join(str(int(v)) for v in model(x).argmax(1).cpu().tolist())
+            full_exact += int(pred==truth)
+    metrics={"test_digit_accuracy":correct/max(1,total),"test_digit_count":total,
+             "test_full_register_exact_match":full_exact/max(1,len(test_df)),
+             "test_full_register_count":len(test_df),"best_val_accuracy":best,
              "train_images":len(train_df),"val_images":len(val_df),"test_images":len(test_df),
              "split_unit":"meter_id","device":device}
     (out/"metrics.json").write_text(json.dumps(metrics,indent=2),encoding="utf-8")
