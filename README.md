@@ -77,16 +77,22 @@ This is an initial software baseline, **not a trained OCR model**. The digit rec
 
 Do not target a YOLO detector on the original AI Thinker ESP32-CAM. The practical first edge candidate is fixed geometry + classical image processing + a very small INT8 digit classifier. During data collection, the ESP32-CAM can upload JPEG images to a PC for annotation and training.
 
-## Exact-model reference dataset (NWM SJ-LFC / SJ-WDC)
+## Primary reference data (user-supplied meter photos)
 
-Extract the exact meter figures from the technical certificate (PDF pages 5 and 6):
+The primary calibration inputs are the two real photographs supplied by the user, not images rendered from the certificate PDF and not the manufacturer's unrelated gallery shots:
 
+- Close: `WhatsApp Image 2026-11-12 at 3.15.33 PM.jpeg`
+- Wide: `WhatsApp Image 2026-11-12 at 3.15.32 PM.jpeg`
+
+Keep these two source photos in `data/reference/` locally (they are not committed). The PC app has a separate manually measured preset for each framing in `configs/reference_presets.json`. Upload the corresponding original photo and select its matching preset. Do not apply one photo's normalized coordinates to the other.
+
+The NWM SJ-LFC/SJ-WDC PDF is specification/geometry evidence only. Do not render its pages and add them to the photographic dataset. Manufacturer catalogue photographs are not substitutes for the user's actual meter images and are not part of the primary calibration set.
+
+The optional manufacturer-gallery downloader is kept separate for product appearance inspection only:
 ```powershell
-python -m pip install -r requirements-pc.txt
-python scripts/download_nwm_sj_lfc_reference.py
+python scripts/download_nwm_sj_lfc_real_photos.py
 ```
-
-The extracted technical illustrations are geometry references, not a photographic training dataset. See [the target-specific dataset protocol](docs/nwm_sj_lfc_dataset.md).
+Do not use those gallery images as the user's calibration images or as labeled training data.
 
 ## Dataset rules
 
@@ -140,11 +146,13 @@ Read docs/current_data_limitations.md before interpreting any results. The curre
 
 ## Corrected reference-photo calibration (2026-11-15)
 
-The PC app now has separate measured ROI presets for the two supplied reference images:
+The PC app uses the two user-supplied reference photographs as its primary calibration data:
 
 - Close framing: `WhatsApp Image 2026-11-12 at 3.15.33 PM.jpeg`
 - Wide framing: `WhatsApp Image 2026-11-12 at 3.15.32 PM.jpeg`
 
-Run the app, upload the matching photo, and select the corresponding framing in the sidebar. The green register rectangle and four orange dial circles are displayed before OCR. Fine-tuning controls are available for the digit rectangle and each dial center/radius. See [reference photo calibration](docs/reference_photo_calibration.md).
+The manually measured, separate presets are stored in `configs/reference_presets.json`. Upload each original photo and select its matching preset. The green register rectangle covers the five black digit windows; orange circles mark the four fractional dial faces. Do not use manufacturer-gallery images or PDF page renders in place of these photos.
 
-These are photo-specific ROIs. Recalibrate after installing the ESP32-CAM in its final fixed position. Fractional dial values are not yet validated.
+The five black odometer digits were provisionally read as `00000` by the user. The user's provisional fractional dial interpretation was `0.0899 m³`; it is not model-validated ground truth. The four pointer-angle mappings and transition/rollover behavior still require validation.
+
+These two photographs show one physical meter only. They are sufficient for photo-specific ROI calibration and a controlled PC proof of concept, not for training or claiming a generalized digit-recognition model. Keep the original photos unchanged and store them locally under `data/reference/`.
