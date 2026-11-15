@@ -77,7 +77,7 @@ This is an initial software baseline, **not a trained OCR model**. The digit rec
 
 Do not target a YOLO detector on the original AI Thinker ESP32-CAM. The practical first edge candidate is fixed geometry + classical image processing + a very small INT8 digit classifier. During data collection, the ESP32-CAM can upload JPEG images to a PC for annotation and training.
 
-## Dataset rules
+## Exact-model reference dataset (NWM SJ-LFC / FD2)\n\nDownload the five official product-gallery reference photos locally (not committed to Git):\n\n```powershell\npython scripts/download_nwm_sj_lfc_reference.py\n```\n\nThe script writes a SHA-256 manifest under `data/external/nwm_sj_lfc_reference/`. These are unlabeled product references, not training data. The source site displays a copyright notice; check rights before model training, redistribution, or commercial use. Read [the target-specific dataset protocol](docs/nwm_sj_lfc_dataset.md).\n\n## Dataset rules
 
 Split by physical meter ID, never by random frames from the same meter. Include all digits and transitions, all dial positions around 360°, and realistic glare, shadow, dirt, blur and lighting changes. Do not use unvalidated readings for billing.
 
