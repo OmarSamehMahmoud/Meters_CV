@@ -1,99 +1,177 @@
 from __future__ import annotations
+
+import hashlib
 import json
 from pathlib import Path
+
 import cv2
 import easyocr
 import numpy as np
 import streamlit as st
 from PIL import Image, ImageOps
-from src.watermeter.pipeline import load_image
-from src.watermeter.dials import detect_red_pointer_angle
 
-PROFILE_PATH = Path("configs/meter_profile.example.json")
+PRESETS_PATH = Path("configs/reference_presets.json")
 st.set_page_config(page_title="WaterMeterVision", page_icon="💧", layout="wide")
 st.title("WaterMeterVision")
-st.caption("PC-first mechanical water-meter reader · AI Thinker ESP32-CAM target")
+st.caption("PC-first mechanical water-meter reader · calibrated against the two supplied reference photos")
+
+
 @st.cache_resource
 def get_reader():
     return easyocr.Reader(["en"], gpu=False, verbose=False)
 
-profile = json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
-with st.sidebar:
-    st.header("Meter calibration")
-    st.info("Start with the example ROI, then adjust it to tightly contain the five black odometer windows. The example coordinates are approximate.")
-    roi = profile["integer_register_roi"]
-    x1 = st.slider("Register left", 0.0, 0.95, float(roi[0]), 0.005)
-    y1 = st.slider("Register top", 0.0, 0.95, float(roi[1]), 0.005)
-    x2 = st.slider("Register right", 0.05, 1.0, float(roi[2]), 0.005)
-    y2 = st.slider("Register bottom", 0.05, 1.0, float(roi[3]), 0.005)
-    run_dials = st.checkbox("Analyze red dials (experimental)", value=True)
 
-uploaded = st.file_uploader("Upload a meter photo", type=["jpg","jpeg","png","bmp"])
+def image_to_bgr(pil_image: Image.Image) -> np.ndarray:
+    return cv2.cvtColor(np.asarray(pil_image.convert("RGB")), cv2.COLOR_RGB2BGR)
+
+
+def pixel_roi(roi, width, height):
+    x1, y1, x2, y2 = roi
+    return (
+        max(0, min(width - 1, int(round(x1 * width)))),
+        max(0, min(height - 1, int(round(y1 * height)))),
+        max(1, min(width, int(round(x2 * width)))),
+        max(1, min(height, int(round(y2 * height)))),
+    )
+
+
+def draw_calibration(image, roi, dials):
+    canvas = image.copy()
+    h, w = canvas.shape[:2]
+    x1, y1, x2, y2 = pixel_roi(roi, w, h)
+    cv2.rectangle(canvas, (x1, y1), (x2, y2), (40, 220, 40), 3)
+    cv2.putText(canvas, "5-digit register", (x1, max(24, y1 - 9)),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.65, (40, 220, 40), 2, cv2.LINE_AA)
+    for dial in dials:
+        cx = int(round(dial["center"][0] * w))
+        cy = int(round(dial["center"][1] * h))
+        radius = int(round(dial["radius"] * min(w, h)))
+        cv2.circle(canvas, (cx, cy), radius, (255, 170, 0), 2)
+        cv2.drawMarker(canvas, (cx, cy), (0, 80, 255), cv2.MARKER_CROSS, 18, 2)
+        cv2.putText(canvas, dial["name"], (cx - radius, cy - radius - 7),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.52, (255, 170, 0), 2, cv2.LINE_AA)
+    return canvas
+
+
+def read_digits(crop):
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    # Upscale the small mechanical register before OCR.
+    gray = cv2.resize(gray, None, fx=2.5, fy=2.5, interpolation=cv2.INTER_CUBIC)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4)).apply(gray)
+    reader = get_reader()
+    results = reader.readtext(
+        clahe, allowlist="0123456789", detail=1, paragraph=False,
+        text_threshold=0.35, low_text=0.25, link_threshold=0.25
+    )
+    found = []
+    for box, text, confidence in results:
+        digits = "".join(char for char in text if char.isdigit())
+        if digits:
+            found.append((min(point[0] for point in box), digits, float(confidence)))
+    found.sort(key=lambda item: item[0])
+    return "".join(item[1] for item in found), found
+
+
+presets_data = json.loads(PRESETS_PATH.read_text(encoding="utf-8"))["reference_presets"]
+uploaded = st.file_uploader("Upload a meter photo", type=["jpg", "jpeg", "png", "bmp"])
+
 if uploaded:
+    raw = uploaded.getvalue()
+    image_key = hashlib.sha1(raw).hexdigest()
     pil = ImageOps.exif_transpose(Image.open(uploaded)).convert("RGB")
-    image = cv2.cvtColor(np.asarray(pil), cv2.COLOR_RGB2BGR)
-    h,w = image.shape[:2]
-    left,top,right,bottom = int(x1*w),int(y1*h),int(x2*w),int(y2*h)
-    if right <= left or bottom <= top:
-        st.error("Invalid ROI. Right/bottom must be greater than left/top.")
-        st.stop()
-    crop = image[top:bottom,left:right]
-    col1,col2 = st.columns(2)
-    with col1:
-        st.subheader("Uploaded image")
-        st.image(pil, use_container_width=True)
-    with col2:
-        st.subheader("Integer-register ROI")
-        st.image(cv2.cvtColor(crop,cv2.COLOR_BGR2RGB), use_container_width=True)
+    image = image_to_bgr(pil)
+    height, width = image.shape[:2]
+
+    st.sidebar.header("Image calibration")
+    preset_keys = list(presets_data)
+    preset_labels = {key: presets_data[key]["label"] for key in preset_keys}
+    preset_choice = st.sidebar.selectbox(
+        "Choose the matching reference framing",
+        options=preset_keys,
+        format_func=lambda key: preset_labels[key],
+        help="The close and wide reference photos have different framing. Select the one that matches the uploaded photo."
+    )
+    selected = presets_data[preset_choice]
+    roi_default = selected["integer_register_roi"]
+
+    st.sidebar.caption("Fine-tune the green register rectangle if needed.")
+    roi_values = []
+    labels = ["Register left", "Register top", "Register right", "Register bottom"]
+    for index, label in enumerate(labels):
+        lo, hi = (0.0, 0.95) if index < 2 else (0.05, 1.0)
+        roi_values.append(st.sidebar.slider(
+            label, min_value=lo, max_value=hi, value=float(roi_default[index]),
+            step=0.001, format="%.3f", key=f"{image_key}_{preset_choice}_roi_{index}"
+        ))
+    roi = tuple(roi_values)
+
+    dial_values = []
+    with st.sidebar.expander("Fine-tune the four dial circles", expanded=False):
+        for dial_index, base_dial in enumerate(selected["dials"]):
+            st.markdown(f"**{base_dial['name']}**")
+            cx = st.slider("Center X", 0.0, 1.0, float(base_dial["center"][0]), 0.001,
+                           key=f"{image_key}_{preset_choice}_dx_{dial_index}")
+            cy = st.slider("Center Y", 0.0, 1.0, float(base_dial["center"][1]), 0.001,
+                           key=f"{image_key}_{preset_choice}_dy_{dial_index}")
+            radius = st.slider("Radius", 0.02, 0.20, float(base_dial["radius"]), 0.001,
+                               key=f"{image_key}_{preset_choice}_dr_{dial_index}")
+            dial_values.append({"name": base_dial["name"], "center": [cx, cy], "radius": radius})
+
+    left, right = st.columns([1.25, 1])
+    with left:
+        st.subheader("Calibration overlay")
+        overlay = draw_calibration(image, roi, dial_values)
+        st.image(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB), use_container_width=True)
+        st.caption("Green = five black digit windows. Orange = the four fractional dial faces. Cross = dial center.")
+    with right:
+        st.subheader("Register crop preview")
+        x1, y1, x2, y2 = pixel_roi(roi, width, height)
+        register_crop = image[y1:y2, x1:x2]
+        st.image(cv2.cvtColor(register_crop, cv2.COLOR_BGR2RGB), use_container_width=True)
+        st.write(f"Image: {width} × {height} px · ROI: ({x1}, {y1})–({x2}, {y2})")
+        st.info("Check that the green rectangle includes all five black digit wheels and excludes the printed Q3 text below.")
+
     if st.button("Analyze meter", type="primary"):
-        with st.spinner("Running CPU OCR and computer vision... First run downloads the EasyOCR weights."):
-            gray = cv2.cvtColor(crop,cv2.COLOR_BGR2GRAY)
-            clahe = cv2.createCLAHE(clipLimit=2.0,tileGridSize=(4,4)).apply(gray)
-            reader = get_reader()
-            results = reader.readtext(clahe, allowlist="0123456789", detail=1, paragraph=False,
-                                      text_threshold=0.35, low_text=0.25, link_threshold=0.25)
-            chars=[]
-            for box,text,conf in results:
-                digits="".join(c for c in text if c.isdigit())
-                if digits:
-                    xs=[p[0] for p in box]
-                    chars.append((min(xs),digits,float(conf)))
-            chars.sort(key=lambda item:item[0])
-            integer="".join(item[1] for item in chars)
-            confidence=float(np.mean([item[2] for item in chars])) if chars else 0.0
-            overlay=image.copy()
-            cv2.rectangle(overlay,(left,top),(right,bottom),(0,255,0),3)
-            dial_results=[]
-            if run_dials:
-                for d in profile["dials"]:
-                    cx,cy=int(d["center"][0]*w),int(d["center"][1]*h)
-                    radius=int(d["radius"]*min(w,h))
-                    angle,support=detect_red_pointer_angle(image,(cx,cy),radius)
-                    cv2.circle(overlay,(cx,cy),radius,(255,180,0),2)
-                    dial_results.append({"dial":d["name"],"pointer_angle_deg":None if angle is None else round(angle,1),
-                                         "heuristic_support":round(support,3),"calibrated_value":None})
-            st.session_state["analysis"]={"integer_digits":integer,"ocr_confidence":confidence,
-                "ocr_raw":[{"text":v[1],"confidence":round(v[2],3)} for v in chars],
-                "dial_results":dial_results,"roi":[x1,y1,x2,y2]}
-            st.session_state["overlay"]=cv2.cvtColor(overlay,cv2.COLOR_BGR2RGB)
-    if "analysis" in st.session_state:
-        out=st.session_state["analysis"]
+        if x2 <= x1 or y2 <= y1:
+            st.error("Invalid register ROI.")
+            st.stop()
+        with st.spinner("Running CPU OCR... First run may download EasyOCR weights."):
+            integer, raw_results = read_digits(register_crop)
+            confidence = float(np.mean([item[2] for item in raw_results])) if raw_results else 0.0
+            annotated = draw_calibration(image, roi, dial_values)
+            payload = {
+                "status": "needs_review",
+                "integer_digits": integer if len(integer) == 5 else None,
+                "reading_m3": None,
+                "ocr_confidence": round(confidence, 4),
+                "ocr_raw": [{"text": item[1], "confidence": round(item[2], 4)} for item in raw_results],
+                "selected_reference_preset": preset_choice,
+                "register_roi_pixels": [x1, y1, x2, y2],
+                "dial_centers_pixels": [
+                    {"name": d["name"], "center": [int(round(d["center"][0] * width)),
+                                                     int(round(d["center"][1] * height))],
+                     "radius": int(round(d["radius"] * min(width, height)))}
+                    for d in dial_values
+                ],
+                "note": "Dial positions are calibrated for overlay only. Dial pointer values and the complete meter reading are not yet validated."
+            }
+            st.session_state[f"result_{image_key}"] = payload
+            st.session_state[f"overlay_{image_key}"] = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
+
+    result = st.session_state.get(f"result_{image_key}")
+    if result:
         st.divider()
-        st.subheader("Recognition result")
-        if len(out["integer_digits"]) == 5:
-            st.metric("Black register (m³)",out["integer_digits"])
+        st.subheader("OCR result")
+        if result["integer_digits"]:
+            st.metric("Black register (m³)", result["integer_digits"])
         else:
-            st.warning(f"OCR returned '{out['integer_digits'] or 'no digits'}' — expected exactly 5 digits. Adjust ROI and retry.")
-        st.write(f"Mean OCR confidence: {out['ocr_confidence']:.3f}")
-        st.image(st.session_state["overlay"],caption="Detected register ROI and approximate dial regions",use_container_width=True)
-        if out["dial_results"]:
-            st.subheader("Red fractional dials")
-            st.dataframe(out["dial_results"],use_container_width=True)
-            st.caption("Dial angles are experimental diagnostics only. Values are deliberately not calculated until each dial's zero direction, rotation and scale are calibrated.")
-        payload={"status":"needs_review","integer_digits":out["integer_digits"] if len(out["integer_digits"])==5 else None,
-                 "reading_m3":None,"ocr_confidence":out["ocr_confidence"],"dial_results":out["dial_results"],
-                 "roi":out["roi"],"note":"PC OCR prototype; verify every reading manually. Fractional dial calibration is pending."}
-        st.download_button("Download result JSON",json.dumps(payload,indent=2),file_name="watermeter_result.json",mime="application/json")
+            st.warning(f"OCR returned {result['ocr_raw']}; expected exactly five digits. Verify the crop before trusting the result.")
+        st.write(f"Mean OCR confidence: {result['ocr_confidence']:.3f}")
+        st.image(st.session_state[f"overlay_{image_key}"], caption="Calibration used for this analysis", use_container_width=True)
+        st.download_button(
+            "Download result JSON", json.dumps(result, indent=2),
+            file_name="watermeter_result.json", mime="application/json"
+        )
 else:
-    st.info("Upload a photo to begin. The first analysis downloads EasyOCR's pretrained English recognition weights; subsequent runs can reuse the cached weights.")
-st.caption("Prototype only — not approved for billing or safety-critical decisions.")
+    st.info("Upload either of the two supplied reference photos. Select the matching close or wide preset; the calibrated boxes and circles will be shown before OCR.")
+    st.caption("Prototype only — verify readings manually. Fractional dial interpretation is not yet validated.")
