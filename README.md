@@ -8,6 +8,10 @@ Repository: https://github.com/OmarSamehMahmoud/Meters_CV
 
 The reference meter has five black odometer wheels for the integer m³ register and four red pointer dials for fractional precision. The dial labels/order and pointer rotation convention must be confirmed against a straight-on capture and the meter specification before precision readings are reconstructed.
 
+## Standalone ESP32-CAM firmware
+
+The embedded implementation is maintained separately under [`esp32_cam/`](esp32_cam/README.md). It targets AI Thinker ESP32-CAM + OV2640 and is designed for local on-device processing with Serial Monitor diagnostics only: no Python, Streamlit, web server or cloud at runtime. The firmware currently includes camera capture, JPEG-to-RGB conversion and an experimental red-pointer angle detector. Digit-model deployment and physical meter calibration are still pending; do not treat the current firmware as a validated meter reader.
+
 ## Current repository contents
 
 - `src/watermeter/pipeline.py`: image loading, fixed-family register crop, dial heuristic pipeline.
