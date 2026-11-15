@@ -3,3 +3,4 @@ streamlit>=1.38
 easyocr>=1.7.2
 matplotlib>=3.8
 Pillow>=10.0
+PyMuPDF>=1.24
