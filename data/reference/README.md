@@ -1,0 +1,1 @@
+Put the two already supplied reference photographs here as reference_01.jpg and reference_02.jpg. They are used for fixed-layout calibration and preprocessing checks only. Augmented variants belong under data/augmented_reference and are not independent training samples.
