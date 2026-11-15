@@ -11,6 +11,7 @@ import streamlit as st
 from PIL import Image, ImageOps
 
 PRESETS_PATH = Path("configs/reference_presets.json")
+REFERENCE_DIR = Path("data/reference")
 st.set_page_config(page_title="WaterMeterVision", page_icon="💧", layout="wide")
 st.title("WaterMeterVision")
 st.caption("PC-first mechanical water-meter reader · calibrated against the two supplied reference photos")
@@ -73,12 +74,45 @@ def read_digits(crop):
 
 
 presets_data = json.loads(PRESETS_PATH.read_text(encoding="utf-8"))["reference_presets"]
-uploaded = st.file_uploader("Upload a meter photo", type=["jpg", "jpeg", "png", "bmp"])
+REFERENCE_DIR.mkdir(parents=True, exist_ok=True)
+reference_images = sorted(
+    p for p in REFERENCE_DIR.iterdir()
+    if p.is_file() and p.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp"}
+)
 
-if uploaded:
-    raw = uploaded.getvalue()
+st.sidebar.header("Image source")
+source_mode = st.sidebar.radio(
+    "Choose image source",
+    ["Use saved reference photo", "Upload a new photo"],
+    index=0 if reference_images else 1,
+)
+uploaded = st.file_uploader("Upload a meter photo", type=["jpg", "jpeg", "png", "bmp"]) if source_mode == "Upload a new photo" else None
+
+selected_reference = None
+if source_mode == "Use saved reference photo":
+    if reference_images:
+        selected_reference = st.selectbox(
+            "Select one of your original meter photos",
+            options=reference_images,
+            format_func=lambda p: p.name,
+        )
+    else:
+        st.warning(
+            "No reference photos found. Copy your two original WhatsApp images into "
+            "data/reference/ and refresh this page, or switch to Upload a new photo."
+        )
+
+image_source = selected_reference if selected_reference is not None else uploaded
+
+if image_source is not None:
+    if isinstance(image_source, Path):
+        raw = image_source.read_bytes()
+        pil = ImageOps.exif_transpose(Image.open(image_source)).convert("RGB")
+    else:
+        raw = image_source.getvalue()
+        from io import BytesIO
+        pil = ImageOps.exif_transpose(Image.open(BytesIO(raw))).convert("RGB")
     image_key = hashlib.sha1(raw).hexdigest()
-    pil = ImageOps.exif_transpose(Image.open(uploaded)).convert("RGB")
     image = image_to_bgr(pil)
     height, width = image.shape[:2]
 
@@ -121,7 +155,7 @@ if uploaded:
     with left:
         st.subheader("Calibration overlay")
         overlay = draw_calibration(image, roi, dial_values)
-        st.image(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB), use_container_width=True)
+        st.image(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB), width="stretch")
         st.caption("Green = five black digit windows. Orange = the four fractional dial faces. Cross = dial center.")
     with right:
         st.subheader("Register crop preview")
@@ -173,5 +207,8 @@ if uploaded:
             file_name="watermeter_result.json", mime="application/json"
         )
 else:
-    st.info("Upload either of the two supplied reference photos. Select the matching close or wide preset; the calibrated boxes and circles will be shown before OCR.")
+    st.info(
+        "Place your two original photos in data/reference/ to select them here, "
+        "or choose 'Upload a new photo' from the sidebar."
+    )
     st.caption("Prototype only — verify readings manually. Fractional dial interpretation is not yet validated.")
