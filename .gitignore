@@ -11,3 +11,7 @@ models/*.pt
 !data/raw/.gitkeep
 !data/labels/.gitkeep
 !models/.gitkeep
+
+# Downloaded third-party/reference images (keep local; do not commit)
+data/external/*
+!data/external/README.md
