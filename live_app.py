@@ -185,6 +185,26 @@ def channel_geometry(channel):
     return list(cfg["integer_register_roi"]), [dict(d) for d in cfg["dials"]]
 
 
+def current_channel_geometry(channel):
+    default_roi, default_dials = channel_geometry(channel)
+    channel_id = channel["id"]
+    roi = [
+        float(st.session_state.get(f"{channel_id}_roi_slider_{i}", value))
+        for i, value in enumerate(default_roi)
+    ]
+    dials = []
+    for i, dial in enumerate(default_dials):
+        dials.append({
+            "name": dial["name"],
+            "center": [
+                float(st.session_state.get(f"{channel_id}_cx_{i}", dial["center"][0])),
+                float(st.session_state.get(f"{channel_id}_cy_{i}", dial["center"][1])),
+            ],
+            "radius": float(st.session_state.get(f"{channel_id}_r_{i}", dial["radius"])),
+        })
+    return roi, dials
+
+
 # One stream worker per unique HTTP URL; duplicate demo URLs share a single
 # underlying ESP32 connection instead of opening eight connections to one board.
 camera_by_url = {}
@@ -233,16 +253,7 @@ st.markdown("### LIVE CAMERA WALL")
 st.caption("4 × 2 channel layout. Each station has its own calibration, trigger and result panel.")
 
 # Per-channel geometry persists in session state and is independently adjustable.
-geometries = {}
-for ch in CHANNELS:
-    defaults_roi, defaults_dials = channel_geometry(ch)
-    roi_key = f'roi_{ch["id"]}'
-    dial_key = f'dials_{ch["id"]}'
-    if roi_key not in st.session_state:
-        st.session_state[roi_key] = defaults_roi
-    if dial_key not in st.session_state:
-        st.session_state[dial_key] = defaults_dials
-    geometries[ch["id"]] = (st.session_state[roi_key], st.session_state[dial_key])
+geometries = {ch["id"]: current_channel_geometry(ch) for ch in CHANNELS}
 
 # A single "trigger all" captures all latest frames first, then processes channels
 # concurrently. The same test camera can therefore emulate 8 separate stations.
@@ -258,7 +269,7 @@ if trigger_all:
     for ch in CHANNELS:
         frame = frames_by_url.get(ch["stream_url"])
         if frame is not None:
-            roi, dials = geometries[ch["id"]]
+            roi, dials = current_channel_geometry(ch)
             jobs.append((ch, frame.copy(), roi, dials))
     if not jobs:
         st.error("No camera frames are available. Check the HTTP stream URLs and local network.")
@@ -295,8 +306,8 @@ def camera_wall():
             frame = camera.latest() if camera else None
             result_data = results.get(ch["id"], {})
             with col:
-                st.markdown('<div class="wm-card">', unsafe_allow_html=True)
-                st.markdown(
+                with st.container(border=True):
+                    st.markdown(
                     f'<div class="wm-card-head"><div><div class="wm-cam">{ch["name"]}</div>'
                     f'<div class="wm-id">{ch["meter_id"]} · {ch["ip_label"]}</div></div></div>',
                     unsafe_allow_html=True,
@@ -350,22 +361,18 @@ def camera_wall():
                     roi, dials = geometries[ch["id"]]
                     st.caption("Adjust normalized coordinates for this station only.")
                     labels = ["Register left", "Register top", "Register right", "Register bottom"]
-                    updated_roi = list(roi)
                     for i, label in enumerate(labels):
                         lo, hi = (0.0, 0.95) if i < 2 else (0.05, 1.0)
-                        updated_roi[i] = st.slider(
+                        st.slider(
                             label, lo, hi, float(roi[i]), 0.001,
                             key=f'{ch["id"]}_roi_slider_{i}',
                         )
-                    updated_dials = []
                     for i, dial in enumerate(dials):
                         st.markdown(f'**{dial["name"]}**')
                         cx = st.slider("Center X", 0.0, 1.0, float(dial["center"][0]), 0.001, key=f'{ch["id"]}_cx_{i}')
                         cy = st.slider("Center Y", 0.0, 1.0, float(dial["center"][1]), 0.001, key=f'{ch["id"]}_cy_{i}')
                         radius = st.slider("Radius", 0.02, 0.20, float(dial["radius"]), 0.001, key=f'{ch["id"]}_r_{i}')
                         updated_dials.append({"name": dial["name"], "center": [cx, cy], "radius": radius})
-                    st.session_state[f'roi_{ch["id"]}'] = updated_roi
-                    st.session_state[f'dials_{ch["id"]}'] = updated_dials
                 if "result" in result_data:
                     with st.expander("VIEW ANALYSIS DETAILS"):
                         r = result_data["result"]
@@ -381,7 +388,6 @@ def camera_wall():
                             mime="application/json",
                             key=f'download_{ch["id"]}',
                         )
-                st.markdown("</div>", unsafe_allow_html=True)
 
 camera_wall()
 
