@@ -67,3 +67,13 @@ html[dir="rtl"] .hero-caption b{padding:0 5px}
 .app-shell[data-theme="light"] .local-chip{background:#e7f4ef;border-color:#c8e4d9;color:#276c5d}
 .app-shell[data-theme="light"] .avatar{background:#e0edf1;color:#315b68}
 .app-shell[data-theme="light"] .empty-state{color:#60778b;border-color:#cbd8e2}
+
+
+/* Direct per-camera stream link */
+.camera-stream-link {
+  color: var(--mint, #65e6bd);
+  text-decoration: none;
+  border-bottom: 1px dashed currentColor;
+  transition: opacity .18s ease;
+}
+.camera-stream-link:hover { opacity: .78; }
