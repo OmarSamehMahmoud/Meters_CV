@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import math
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import cv2
@@ -12,12 +14,49 @@ import streamlit as st
 
 from src.watermeter.camera_stream import LatestFrameCamera
 
+ROOT = Path(__file__).resolve().parent
+CHANNELS = json.loads((ROOT / "configs" / "camera_channels.json").read_text(encoding="utf-8"))["cameras"]
+PRESETS = json.loads((ROOT / "configs" / "reference_presets.json").read_text(encoding="utf-8"))["reference_presets"]
 WEIGHTS = {"x0.1": 0.1, "x0.01": 0.01, "x0.001": 0.001, "x0.0001": 0.0001}
-PRESETS = json.loads(Path("configs/reference_presets.json").read_text(encoding="utf-8"))["reference_presets"]
+OCR_LOCK = threading.Lock()
 
-st.set_page_config(page_title="WaterMeterVision Live", page_icon="💧", layout="wide")
-st.title("WaterMeterVision | ESP32-CAM Live Demo")
-st.caption("Continuous live video · PC-side OpenCV/EasyOCR · manual trigger")
+st.set_page_config(
+    page_title="WaterMeterVision | 8-Camera Control",
+    page_icon="💧",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+st.markdown("""
+<style>
+    .stApp { background: radial-gradient(ellipse at 15% 0%, #14263a 0%, #0b1220 42%, #080d17 100%); }
+    [data-testid="stHeader"] { background: transparent; }
+    [data-testid="stSidebar"] { background: #0d1726; border-right: 1px solid #26364b; }
+    .block-container { padding-top: 1.2rem; max-width: 1900px; }
+    .wm-hero { padding: 18px 22px; border: 1px solid #263b52; border-radius: 18px;
+        background: linear-gradient(115deg, rgba(18,39,60,.96), rgba(12,24,40,.92));
+        box-shadow: 0 12px 40px rgba(0,0,0,.22); margin-bottom: 14px; }
+    .wm-eyebrow { color:#55d6be; font-size:11px; letter-spacing:2.4px; font-weight:800; }
+    .wm-title { color:#f2f7fc; font-size:29px; font-weight:800; letter-spacing:-.7px; margin:4px 0; }
+    .wm-sub { color:#9db0c5; font-size:13px; }
+    .wm-card { border:1px solid #2b3e55; border-radius:15px; padding:12px;
+        background: linear-gradient(160deg, rgba(19,34,52,.98), rgba(12,22,36,.98));
+        box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+    .wm-card-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+    .wm-cam { color:#edf5ff; font-weight:800; font-size:15px; letter-spacing:.7px; }
+    .wm-id { color:#7f98b4; font-size:10px; letter-spacing:1.2px; }
+    .wm-reading { color:#f3f8ff; font-size:24px; font-weight:800; letter-spacing:1px; }
+    .wm-label { color:#8da4bd; font-size:10px; text-transform:uppercase; letter-spacing:1.3px; }
+    .wm-muted { color:#9bb0c5; font-size:11px; }
+    div[data-testid="stMetric"] { background:rgba(22,40,60,.72); border:1px solid #2a4058; padding:10px 13px; border-radius:12px; }
+    div[data-testid="stMetricLabel"] { color:#9bb0c5; }
+    div[data-testid="stMetricValue"] { color:#f4f8fc; }
+    .stButton > button[kind="primary"] { border:0; background:linear-gradient(100deg,#12a88c,#087f9b); color:white; font-weight:800; }
+    .stButton > button { border-radius:10px; }
+    div[data-testid="stExpander"] { border:1px solid #2b4058; border-radius:10px; background:rgba(13,27,43,.7); }
+    hr { border-color:#26384e; }
+</style>
+""", unsafe_allow_html=True)
 
 
 @st.cache_resource
@@ -26,22 +65,28 @@ def get_reader():
 
 
 @st.cache_resource
-def get_camera(url):
+def get_camera(url: str):
+    # Streamlit cache shares one reader for identical URLs.
+    # In demo mode, all 8 logical channels use one physical ESP32-CAM stream.
     return LatestFrameCamera(url)
 
 
 def pixel_roi(roi, w, h):
     x1, y1, x2, y2 = roi
-    return (max(0, min(w - 1, int(round(x1 * w)))),
-            max(0, min(h - 1, int(round(y1 * h)))),
-            max(1, min(w, int(round(x2 * w)))),
-            max(1, min(h, int(round(y2 * h)))))
+    return (
+        max(0, min(w - 1, int(round(x1 * w)))),
+        max(0, min(h - 1, int(round(y1 * h)))),
+        max(1, min(w, int(round(x2 * w)))),
+        max(1, min(h, int(round(y2 * h)))),
+    )
 
 
 def dial_geometry(dial, w, h):
-    return (int(round(dial["center"][0] * w)),
-            int(round(dial["center"][1] * h)),
-            max(5, int(round(dial["radius"] * min(w, h)))))
+    return (
+        int(round(dial["center"][0] * w)),
+        int(round(dial["center"][1] * h)),
+        max(5, int(round(dial["radius"] * min(w, h)))),
+    )
 
 
 def read_digits(crop):
@@ -50,9 +95,12 @@ def read_digits(crop):
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
     gray = cv2.resize(gray, None, fx=2.5, fy=2.5, interpolation=cv2.INTER_CUBIC)
     gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4)).apply(gray)
-    results = get_reader().readtext(gray, allowlist="0123456789", detail=1,
-                                    paragraph=False, text_threshold=0.35,
-                                    low_text=0.25, link_threshold=0.25)
+    # EasyOCR Reader is shared by all channels; serialize OCR access for safety.
+    with OCR_LOCK:
+        results = get_reader().readtext(
+            gray, allowlist="0123456789", detail=1, paragraph=False,
+            text_threshold=0.35, low_text=0.25, link_threshold=0.25,
+        )
     found = []
     for box, text, confidence in results:
         digits = "".join(c for c in text if c.isdigit())
@@ -91,13 +139,13 @@ def draw_overlay(image, roi, dials, pointer_results=None):
     out = image.copy()
     h, w = out.shape[:2]
     x1, y1, x2, y2 = pixel_roi(roi, w, h)
-    cv2.rectangle(out, (x1, y1), (x2, y2), (40, 220, 40), 2)
-    cv2.putText(out, "BLACK DIGITS ROI", (x1, max(20, y1 - 7)),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (40, 220, 40), 2)
+    cv2.rectangle(out, (x1, y1), (x2, y2), (55, 220, 160), 2)
+    cv2.putText(out, "DIGITS ROI", (x1, max(20, y1 - 7)),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (55, 220, 160), 2)
     by_name = {p["name"]: p for p in (pointer_results or [])}
     for dial in dials:
-        cx, cy, r = dial_geometry(dial, w, h)
-        cv2.circle(out, (cx, cy), r, (0, 165, 255), 2)
+        cx, cy, radius = dial_geometry(dial, w, h)
+        cv2.circle(out, (cx, cy), radius, (0, 165, 255), 2)
         cv2.drawMarker(out, (cx, cy), (0, 165, 255), cv2.MARKER_CROSS, 12, 2)
         item = by_name.get(dial["name"])
         if item and item["tip"]:
@@ -105,17 +153,18 @@ def draw_overlay(image, roi, dials, pointer_results=None):
     return out
 
 
-def analyze(frame, roi, dials, preset):
+def analyze(frame, roi, dials, channel_id):
     h, w = frame.shape[:2]
     x1, y1, x2, y2 = pixel_roi(roi, w, h)
     if x2 <= x1 or y2 <= y1:
-        raise ValueError("Invalid digit ROI. Adjust the green rectangle.")
+        raise ValueError("Invalid digit ROI. Adjust the channel calibration.")
     digits, ocr = read_digits(frame[y1:y2, x1:x2])
-    pointers = [detect_pointer(frame, d) for d in dials]
+    pointers = [detect_pointer(frame, dial) for dial in dials]
     valid = [p for p in pointers if p["value"] is not None and p["confidence"] >= 0.7]
     fractional = sum(p["value"] * WEIGHTS[p["name"].lower()] for p in valid)
     all_valid = len(digits) == 5 and len(valid) == 4
-    return {
+    result = {
+        "channel_id": channel_id,
         "status": "experimental_candidate" if all_valid else "needs_review",
         "integer_digits": digits if len(digits) == 5 else None,
         "fractional_dials": pointers,
@@ -123,96 +172,223 @@ def analyze(frame, roi, dials, preset):
         "candidate_reading_m3": round(int(digits) + fractional, 6) if all_valid else None,
         "ocr_confidence": round(float(np.mean([x[2] for x in ocr])) if ocr else 0.0, 4),
         "ocr_raw": [{"text": x[1], "confidence": round(x[2], 4)} for x in ocr],
-        "preset": preset, "frame_size": [w, h],
+        "frame_size": [w, h],
         "captured_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "warning": "Experimental only: pointer zero-angle mapping and end-to-end accuracy are not validated. Do not use for billing."
-    }, draw_overlay(frame, roi, dials, pointers)
+        "warning": "Experimental only. Dial zero-angle calibration and end-to-end accuracy are not validated; do not use for billing.",
+    }
+    return result, draw_overlay(frame, roi, dials, pointers)
 
+
+def channel_geometry(channel):
+    preset = channel.get("preset", next(iter(PRESETS)))
+    cfg = PRESETS[preset]
+    return list(cfg["integer_register_roi"]), [dict(d) for d in cfg["dials"]]
+
+
+# One stream worker per unique HTTP URL; duplicate demo URLs share a single
+# underlying ESP32 connection instead of opening eight connections to one board.
+camera_by_url = {}
+for channel in CHANNELS:
+    url = channel["stream_url"].strip()
+    if url:
+        camera_by_url[url] = get_camera(url)
 
 with st.sidebar:
-    st.header("ESP32-CAM")
-    stream_url = st.text_input("MJPEG stream URL", "http://192.168.137.185:81/stream")
-    st.caption("CameraWebServer home page: http://192.168.137.222. The stream is normally on port 81 at /stream.")
-    st.header("Meter calibration")
-    preset = st.selectbox("Starting preset", list(PRESETS),
-                          format_func=lambda k: PRESETS[k]["label"])
-    cfg = PRESETS[preset]
-    defaults = cfg["integer_register_roi"]
-    labels = ["Register left", "Register top", "Register right", "Register bottom"]
-    roi = tuple(st.slider(labels[i], 0.0 if i < 2 else 0.05,
-                          0.95 if i < 2 else 1.0, float(defaults[i]), 0.001,
-                          key="roi_" + preset + "_" + str(i))
-                for i in range(4))
-    dials = []
-    with st.expander("Fine-tune four rotary dials", expanded=True):
-        for i, dial in enumerate(cfg["dials"]):
-            st.markdown("**" + dial["name"] + "**")
-            cx = st.slider("Center X", 0.0, 1.0, float(dial["center"][0]), 0.001, key="cx_" + preset + str(i))
-            cy = st.slider("Center Y", 0.0, 1.0, float(dial["center"][1]), 0.001, key="cy_" + preset + str(i))
-            radius = st.slider("Radius", 0.02, 0.20, float(dial["radius"]), 0.001, key="r_" + preset + str(i))
-            dials.append({"name": dial["name"], "center": [cx, cy], "radius": radius})
+    st.markdown("## 💧 WaterMeterVision")
+    st.caption("8-channel local meter monitoring")
+    st.markdown("---")
+    st.markdown("### Network architecture")
+    st.success("LOCAL HTTP · NO CLOUD")
+    st.caption("The ESP32-CAM exposes an HTTP MJPEG endpoint. The PC connects over a local link; internet access is not required.")
+    st.markdown("### Demo configuration")
+    st.info("All 8 logical channels currently point to one physical camera/IP. One stream is shared; each channel has its own ROI and trigger.")
+    st.markdown("### Processing")
+    workers = st.select_slider("Parallel channel workers", options=[1, 2, 4, 8], value=4)
+    st.caption("OCR is serialized safely; image/dial processing runs in worker threads.")
+    st.markdown("---")
+    st.markdown("### Channel addresses")
+    for ch in CHANNELS:
+        st.caption(f'{ch["name"]}  ·  {ch["ip_label"]}')
 
-if not stream_url.strip():
-    st.error("Enter the camera stream URL.")
-    st.stop()
 
-camera = get_camera(stream_url.strip())
-frame0 = None
-for _ in range(40):
-    frame0 = camera.latest()
-    if frame0 is not None:
-        break
-    time.sleep(0.25)
+st.markdown("""
+<div class="wm-hero">
+  <div class="wm-eyebrow">INDUSTRIAL METER INTELLIGENCE · LOCAL EDGE SYSTEM</div>
+  <div class="wm-title">WATERMETERVISION <span style="color:#55d6be">/ CONTROL CENTER</span></div>
+  <div class="wm-sub">Eight independent meter stations · live MJPEG monitoring · on-demand computer vision · local HTTP transport</div>
+</div>
+""", unsafe_allow_html=True)
 
-if frame0 is None:
-    st.warning("Waiting for camera: " + camera.last_error)
-    st.info("Stream URL being tested: " + stream_url.strip() + ". Confirm it opens in a browser on this PC.")
-    st.stop()
+# Resolve each unique stream once and collect current frames.
+frames_by_url = {url: camera.latest() for url, camera in camera_by_url.items()}
+connected_urls = {url for url, camera in camera_by_url.items() if camera.connected and camera.latest() is not None}
+online_channels = sum(1 for ch in CHANNELS if ch["stream_url"] in connected_urls)
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("CAMERA CHANNELS", f"{online_channels:02d} / 08", "Logical stations online")
+col2.metric("METER STATIONS", "08", "Configured")
+col3.metric("TRANSPORT", "HTTP / MJPEG", "Local network")
+col4.metric("PROCESSING", "PC / CPU", "Trigger-based")
 
-h, w = frame0.shape[:2]
-st.success("Camera connected · " + str(w) + " × " + str(h) + " · newest frame is continuously refreshed")
+st.markdown("### LIVE CAMERA WALL")
+st.caption("4 × 2 channel layout. Each station has its own calibration, trigger and result panel.")
 
-@st.fragment(run_every=0.4)
-def live_panel():
-    frame = camera.latest()
-    if frame is None:
-        st.warning(camera.last_error or "No frame received.")
-        return
-    left, right = st.columns([1.6, 1])
-    with left:
-        preview = draw_overlay(frame, roi, dials)
-        st.image(cv2.cvtColor(preview, cv2.COLOR_BGR2RGB),
-                 caption="Live stream · green = digit ROI · circles = dial ROIs",
-                 use_container_width=True)
-    with right:
-        st.subheader("Manual trigger")
-        st.write("Live video continues. CV starts only when you press Trigger.")
-        if st.button("TRIGGER — READ METER", type="primary", use_container_width=True):
-            shot = camera.latest()
-            if shot is None:
-                st.error("No fresh frame available.")
-            else:
-                with st.spinner("Running OCR and rotary-pointer detection on the PC..."):
+# Per-channel geometry persists in session state and is independently adjustable.
+geometries = {}
+for ch in CHANNELS:
+    defaults_roi, defaults_dials = channel_geometry(ch)
+    roi_key = f'roi_{ch["id"]}'
+    dial_key = f'dials_{ch["id"]}'
+    if roi_key not in st.session_state:
+        st.session_state[roi_key] = defaults_roi
+    if dial_key not in st.session_state:
+        st.session_state[dial_key] = defaults_dials
+    geometries[ch["id"]] = (st.session_state[roi_key], st.session_state[dial_key])
+
+# A single "trigger all" captures all latest frames first, then processes channels
+# concurrently. The same test camera can therefore emulate 8 separate stations.
+toolbar_left, toolbar_right = st.columns([3, 1])
+with toolbar_left:
+    st.markdown("**Station operations**")
+    st.caption("Trigger one station independently, or capture all eight stations together.")
+with toolbar_right:
+    trigger_all = st.button("⚡ TRIGGER ALL 8", type="primary", use_container_width=True)
+
+if trigger_all:
+    jobs = []
+    for ch in CHANNELS:
+        frame = frames_by_url.get(ch["stream_url"])
+        if frame is not None:
+            roi, dials = geometries[ch["id"]]
+            jobs.append((ch, frame.copy(), roi, dials))
+    if not jobs:
+        st.error("No camera frames are available. Check the HTTP stream URLs and local network.")
+    else:
+        results = st.session_state.setdefault("channel_results", {})
+        with st.spinner(f"Capturing {len(jobs)} stations and processing on the PC..."):
+            with ThreadPoolExecutor(max_workers=int(workers)) as pool:
+                future_map = {
+                    pool.submit(analyze, frame, roi, dials, ch["id"]): ch
+                    for ch, frame, roi, dials in jobs
+                }
+                for future in as_completed(future_map):
+                    ch = future_map[future]
                     try:
-                        result, annotated = analyze(shot, roi, dials, preset)
-                        st.session_state["live_result"] = result
-                        st.session_state["live_annotated"] = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
+                        result, annotated = future.result()
+                        results[ch["id"]] = {
+                            "result": result,
+                            "annotated": cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
+                        }
                     except Exception as exc:
-                        st.error("Analysis failed: " + str(exc))
-        result = st.session_state.get("live_result")
-        if result:
-            st.divider()
-            st.metric("Black digits", result["integer_digits"] or "Needs review")
-            st.metric("Fractional estimate (m³)", result["fractional_estimate_m3"] if result["fractional_estimate_m3"] is not None else "Unavailable")
-            candidate = result["candidate_reading_m3"]
-            st.metric("Candidate total (m³)", format(candidate, ".4f") if candidate is not None else "Needs review")
-            st.caption("Status: " + result["status"] + " · OCR confidence: " + str(result["ocr_confidence"]))
-            for p in result["fractional_dials"]:
-                value = "Not detected" if p["value"] is None else format(p["value"], ".2f") + " / 10"
-                st.write("**" + p["name"] + ":** " + value + " · confidence " + str(p["confidence"]))
-            st.image(st.session_state["live_annotated"], caption="Triggered frame analysis", use_container_width=True)
-            st.download_button("Download result JSON", json.dumps(result, indent=2),
-                               file_name="watermeter_live_result.json", mime="application/json")
-            st.warning(result["warning"])
+                        results[ch["id"]] = {"error": str(exc)}
+        st.session_state["channel_results"] = results
+        st.success(f"Trigger batch completed for {len(jobs)} channels.")
 
-live_panel()
+@st.fragment(run_every=0.8)
+def camera_wall():
+    results = st.session_state.get("channel_results", {})
+    for row_start in (0, 4):
+        cols = st.columns(4, gap="medium")
+        for offset, col in enumerate(cols):
+            ch = CHANNELS[row_start + offset]
+            url = ch["stream_url"]
+            camera = camera_by_url.get(url)
+            frame = camera.latest() if camera else None
+            result_data = results.get(ch["id"], {})
+            with col:
+                st.markdown('<div class="wm-card">', unsafe_allow_html=True)
+                st.markdown(
+                    f'<div class="wm-card-head"><div><div class="wm-cam">{ch["name"]}</div>'
+                    f'<div class="wm-id">{ch["meter_id"]} · {ch["ip_label"]}</div></div></div>',
+                    unsafe_allow_html=True,
+                )
+                if frame is not None:
+                    roi, dials = geometries[ch["id"]]
+                    preview = draw_overlay(frame, roi, dials)
+                    preview = cv2.resize(preview, (480, int(480 * preview.shape[0] / preview.shape[1])))
+                    st.image(cv2.cvtColor(preview, cv2.COLOR_BGR2RGB), use_container_width=True)
+                    st.markdown('<span style="color:#55d6be;font-size:11px">● STREAM RECEIVING</span>', unsafe_allow_html=True)
+                else:
+                    st.markdown(
+                        '<div style="height:145px;border:1px dashed #52677e;border-radius:10px;display:flex;'
+                        'align-items:center;justify-content:center;color:#93a8bd;background:#101d2c">WAITING FOR HTTP FRAME</div>',
+                        unsafe_allow_html=True,
+                    )
+                    error = camera.last_error if camera else "No URL configured"
+                    st.caption(error[:100])
+                st.markdown('<div class="wm-label">Latest meter reading · m³</div>', unsafe_allow_html=True)
+                if "result" in result_data:
+                    reading = result_data["result"].get("candidate_reading_m3")
+                    digits = result_data["result"].get("integer_digits") or "REVIEW"
+                    st.markdown(
+                        f'<div class="wm-reading">{format(reading, ".4f") if reading is not None else "NEEDS REVIEW"}</div>'
+                        f'<div class="wm-muted">Register: {digits} · OCR confidence: {result_data["result"]["ocr_confidence"]:.2f}</div>',
+                        unsafe_allow_html=True,
+                    )
+                elif "error" in result_data:
+                    st.error(result_data["error"])
+                else:
+                    st.markdown('<div class="wm-reading">— — — — —</div><div class="wm-muted">No trigger result yet</div>', unsafe_allow_html=True)
+
+                if st.button("TRIGGER READ", key=f'trigger_{ch["id"]}', use_container_width=True):
+                    if frame is None:
+                        st.error("No frame received from this camera.")
+                    else:
+                        roi, dials = geometries[ch["id"]]
+                        with st.spinner(f'Processing {ch["name"]}...'):
+                            try:
+                                result, annotated = analyze(frame.copy(), roi, dials, ch["id"])
+                                results[ch["id"]] = {
+                                    "result": result,
+                                    "annotated": cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
+                                }
+                                st.session_state["channel_results"] = results
+                                st.rerun()
+                            except Exception as exc:
+                                st.error(f"Analysis failed: {exc}")
+
+                with st.expander("⚙ CALIBRATION / CHANNEL SETTINGS"):
+                    roi, dials = geometries[ch["id"]]
+                    st.caption("Adjust normalized coordinates for this station only.")
+                    labels = ["Register left", "Register top", "Register right", "Register bottom"]
+                    updated_roi = list(roi)
+                    for i, label in enumerate(labels):
+                        lo, hi = (0.0, 0.95) if i < 2 else (0.05, 1.0)
+                        updated_roi[i] = st.slider(
+                            label, lo, hi, float(roi[i]), 0.001,
+                            key=f'{ch["id"]}_roi_slider_{i}',
+                        )
+                    updated_dials = []
+                    for i, dial in enumerate(dials):
+                        st.markdown(f'**{dial["name"]}**')
+                        cx = st.slider("Center X", 0.0, 1.0, float(dial["center"][0]), 0.001, key=f'{ch["id"]}_cx_{i}')
+                        cy = st.slider("Center Y", 0.0, 1.0, float(dial["center"][1]), 0.001, key=f'{ch["id"]}_cy_{i}')
+                        radius = st.slider("Radius", 0.02, 0.20, float(dial["radius"]), 0.001, key=f'{ch["id"]}_r_{i}')
+                        updated_dials.append({"name": dial["name"], "center": [cx, cy], "radius": radius})
+                    st.session_state[f'roi_{ch["id"]}'] = updated_roi
+                    st.session_state[f'dials_{ch["id"]}'] = updated_dials
+                if "result" in result_data:
+                    with st.expander("VIEW ANALYSIS DETAILS"):
+                        r = result_data["result"]
+                        st.write("**Black digits:**", r["integer_digits"] or "Needs review")
+                        st.write("**Fractional estimate:**", r["fractional_estimate_m3"])
+                        for dial in r["fractional_dials"]:
+                            st.write(f'{dial["name"]}: {dial["value"]} · confidence {dial["confidence"]}')
+                        st.image(result_data["annotated"], caption="Triggered frame with detection overlay", use_container_width=True)
+                        st.download_button(
+                            "Download station JSON",
+                            json.dumps(r, indent=2),
+                            file_name=f'{ch["id"]}_reading.json',
+                            mime="application/json",
+                            key=f'download_{ch["id"]}',
+                        )
+                st.markdown("</div>", unsafe_allow_html=True)
+
+camera_wall()
+
+st.markdown("---")
+st.markdown(
+    '<div style="color:#7f95ad;font-size:11px;text-align:center">'
+    'WATERMETERVISION · LOCAL-FIRST ARCHITECTURE · EXPERIMENTAL CV OUTPUT · NOT FOR BILLING'
+    '</div>',
+    unsafe_allow_html=True,
+)
