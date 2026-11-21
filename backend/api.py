@@ -39,6 +39,14 @@ def camera_frame(channel_id: str):
     return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
+@app.get("/api/cameras/{channel_id}/calibration")
+def get_calibration(channel_id: str):
+    try:
+        return service.get_calibration(channel_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Camera channel not found")
+
+
 @app.put("/api/cameras/{channel_id}/calibration")
 def set_calibration(channel_id: str, payload: CalibrationPayload):
     try:
