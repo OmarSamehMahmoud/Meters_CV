@@ -77,3 +77,16 @@ html[dir="rtl"] .hero-caption b{padding:0 5px}
   transition: opacity .18s ease;
 }
 .camera-stream-link:hover { opacity: .78; }
+
+
+/* Shared single-camera demo notice */
+.demo-mode-banner{display:flex;align-items:center;gap:13px;margin:0 0 18px;padding:13px 16px;border:1px solid rgba(90,210,175,.28);border-radius:13px;background:linear-gradient(110deg,rgba(48,150,125,.13),rgba(38,105,130,.08));color:var(--text-primary,#e8f1f5)}
+.demo-mode-icon{width:34px;height:34px;flex:0 0 34px;display:grid;place-items:center;border-radius:10px;background:rgba(72,196,158,.14);color:#5bd9b0}
+.demo-mode-banner>div:nth-child(2){display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}
+.demo-mode-banner strong{font-size:10px;letter-spacing:.11em;color:#65dcb8}
+.demo-mode-banner span{font-size:11px;line-height:1.55;color:var(--muted,#9aabb8)}
+.demo-mode-banner a{flex:0 0 auto;color:#65dcb8;text-decoration:none;font-size:10px;font-weight:700;letter-spacing:.06em;white-space:nowrap}
+.demo-mode-banner a:hover{text-decoration:underline}
+.app-shell[data-theme="light"] .demo-mode-banner{background:linear-gradient(110deg,#e5f5ef,#edf5f7);border-color:#c5e4d9}
+.app-shell[data-theme="light"] .demo-mode-banner span{color:#607789}
+@media(max-width:650px){.demo-mode-banner{align-items:flex-start;flex-wrap:wrap}.demo-mode-banner a{margin-left:47px}}
