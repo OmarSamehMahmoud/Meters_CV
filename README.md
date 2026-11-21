@@ -163,3 +163,15 @@ These two photographs show one physical meter only. They are sufficient for phot
 
 <img width="1536" height="1024" alt="a3ebfa6d-b555-4eca-8ec5-3ea021c1e369" src="https://github.com/user-attachments/assets/1e7c8c93-75a4-40b6-a3ac-6616263184b1" />
 
+
+
+## ESP32-CAM live-stream demo
+
+A separate Streamlit entry point supports a continuously received ESP32-CAM MJPEG stream with PC-side trigger-based processing. Keep the standard Arduino CameraWebServer firmware on the ESP32-CAM; Python/OpenCV/EasyOCR run on the PC.
+
+- Run: `streamlit run live_app.py`
+- Default stream URL: `http://192.168.137.222:81/stream`
+- Adjust the live register and four dial ROIs in the sidebar, then press **TRIGGER — READ METER**.
+- Full setup and calibration steps: [docs/esp32cam_live_demo.md](docs/esp32cam_live_demo.md)
+
+This is an experimental demonstration. Dial zero-angle calibration and end-to-end accuracy must be validated before operational or billing use.
