@@ -190,3 +190,8 @@ streamlit run live_app.py
 ```
 
 See [docs/eight_camera_local_http_architecture.md](docs/eight_camera_local_http_architecture.md) for the local-only HTTP network design, direct-link limitations, static IP example, and the transition to eight physical cameras.
+
+
+## React control center (new)
+
+A dedicated React/Vite dashboard with a FastAPI backend is available. It keeps camera streaming and CV inference on the local PC and provides an industrial 8-station interface. Setup instructions: [docs/react_control_center.md](docs/react_control_center.md).
