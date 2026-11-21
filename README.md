@@ -175,3 +175,18 @@ A separate Streamlit entry point supports a continuously received ESP32-CAM MJPE
 - Full setup and calibration steps: [docs/esp32cam_live_demo.md](docs/esp32cam_live_demo.md)
 
 This is an experimental demonstration. Dial zero-angle calibration and end-to-end accuracy must be validated before operational or billing use.
+
+
+## Eight-camera local HTTP dashboard
+
+The live dashboard now supports eight logical meter stations in a 4 × 2 camera wall, with independent channel calibration, per-camera triggers, a Trigger All 8 action, and PC-side processing.
+
+For the first test, all eight channels share the same ESP32-CAM stream URL (`192.168.137.185`). The application intentionally opens only one HTTP reader for identical URLs; all eight tiles therefore display the same physical feed while exercising the multi-channel UI and trigger workflow.
+
+Run:
+
+```powershell
+streamlit run live_app.py
+```
+
+See [docs/eight_camera_local_http_architecture.md](docs/eight_camera_local_http_architecture.md) for the local-only HTTP network design, direct-link limitations, static IP example, and the transition to eight physical cameras.
