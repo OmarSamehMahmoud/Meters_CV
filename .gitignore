@@ -15,3 +15,8 @@ models/*.pt
 # Downloaded third-party/reference images (keep local; do not commit)
 data/external/*
 !data/external/README.md
+
+# React/Vite frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
