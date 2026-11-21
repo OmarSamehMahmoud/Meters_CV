@@ -22,7 +22,7 @@ function CameraCard({ camera, frameTick, onTrigger, onConfigure, busy, lang }) {
   const t = (en, ar) => tr(lang, en, ar);
   return <article className={`camera-card ${online ? "is-online" : "is-offline"}`}>
     <div className="camera-card-top">
-      <div className="camera-identity"><div className="camera-index">{camera.id.replace("cam_", "")}</div><div><h3>{camera.name || camera.id}</h3><span>{camera.meter_id || t("METER STATION","محطة العداد")} <i>•</i> {camera.ip_label}</span></div></div>
+      <div className="camera-identity"><div className="camera-index">{camera.id.replace("cam_", "")}</div><div><h3>{camera.name || camera.id}</h3><span>{camera.meter_id || t("METER STATION","محطة العداد")} <i>•</i> <a className="camera-stream-link" href={camera.stream_url} target="_blank" rel="noreferrer" title={t("Open direct MJPEG stream","فتح رابط البث المباشر")}>{camera.ip_label}</a></span></div></div>
       <div className={`status-pill ${online ? "online" : "offline"}`}><span/>{online ? t("LIVE","مباشر") : t("OFFLINE","غير متصل")}</div>
     </div>
     <div className="feed-wrap">
