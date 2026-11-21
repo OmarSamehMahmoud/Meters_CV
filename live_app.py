@@ -131,7 +131,7 @@ def analyze(frame, roi, dials, preset):
 
 with st.sidebar:
     st.header("ESP32-CAM")
-    stream_url = st.text_input("MJPEG stream URL", "http://192.168.137.222:81/stream")
+    stream_url = st.text_input("MJPEG stream URL", "http://192.168.137.185:81/stream")
     st.caption("CameraWebServer home page: http://192.168.137.222. The stream is normally on port 81 at /stream.")
     st.header("Meter calibration")
     preset = st.selectbox("Starting preset", list(PRESETS),
@@ -158,15 +158,15 @@ if not stream_url.strip():
 
 camera = get_camera(stream_url.strip())
 frame0 = None
-for _ in range(20):
+for _ in range(40):
     frame0 = camera.latest()
     if frame0 is not None:
         break
-    time.sleep(0.15)
+    time.sleep(0.25)
 
 if frame0 is None:
     st.warning("Waiting for camera: " + camera.last_error)
-    st.info("Test http://192.168.137.222:81/stream in a browser on the same local network.")
+    st.info("Stream URL being tested: " + stream_url.strip() + ". Confirm it opens in a browser on this PC.")
     st.stop()
 
 h, w = frame0.shape[:2]
