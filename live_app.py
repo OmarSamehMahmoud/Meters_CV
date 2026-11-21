@@ -312,82 +312,82 @@ def camera_wall():
                     f'<div class="wm-id">{ch["meter_id"]} · {ch["ip_label"]}</div></div></div>',
                     unsafe_allow_html=True,
                 )
-                if frame is not None:
-                    roi, dials = current_channel_geometry(ch)
-                    preview = draw_overlay(frame, roi, dials)
-                    preview = cv2.resize(preview, (480, int(480 * preview.shape[0] / preview.shape[1])))
-                    st.image(cv2.cvtColor(preview, cv2.COLOR_BGR2RGB), use_container_width=True)
-                    st.markdown('<span style="color:#55d6be;font-size:11px">● STREAM RECEIVING</span>', unsafe_allow_html=True)
-                else:
-                    st.markdown(
-                        '<div style="height:145px;border:1px dashed #52677e;border-radius:10px;display:flex;'
-                        'align-items:center;justify-content:center;color:#93a8bd;background:#101d2c">WAITING FOR HTTP FRAME</div>',
-                        unsafe_allow_html=True,
-                    )
-                    error = camera.last_error if camera else "No URL configured"
-                    st.caption(error[:100])
-                st.markdown('<div class="wm-label">Latest meter reading · m³</div>', unsafe_allow_html=True)
-                if "result" in result_data:
-                    reading = result_data["result"].get("candidate_reading_m3")
-                    digits = result_data["result"].get("integer_digits") or "REVIEW"
-                    st.markdown(
-                        f'<div class="wm-reading">{format(reading, ".4f") if reading is not None else "NEEDS REVIEW"}</div>'
-                        f'<div class="wm-muted">Register: {digits} · OCR confidence: {result_data["result"]["ocr_confidence"]:.2f}</div>',
-                        unsafe_allow_html=True,
-                    )
-                elif "error" in result_data:
-                    st.error(result_data["error"])
-                else:
-                    st.markdown('<div class="wm-reading">— — — — —</div><div class="wm-muted">No trigger result yet</div>', unsafe_allow_html=True)
-
-                if st.button("TRIGGER READ", key=f'trigger_{ch["id"]}', use_container_width=True):
-                    if frame is None:
-                        st.error("No frame received from this camera.")
-                    else:
+                    if frame is not None:
                         roi, dials = current_channel_geometry(ch)
-                        with st.spinner(f'Processing {ch["name"]}...'):
-                            try:
-                                result, annotated = analyze(frame.copy(), roi, dials, ch["id"])
-                                results[ch["id"]] = {
-                                    "result": result,
-                                    "annotated": cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
-                                }
-                                st.session_state["channel_results"] = results
-                                st.rerun()
-                            except Exception as exc:
-                                st.error(f"Analysis failed: {exc}")
-
-                with st.expander("⚙ CALIBRATION / CHANNEL SETTINGS"):
-                    roi, dials = current_channel_geometry(ch)
-                    st.caption("Adjust normalized coordinates for this station only.")
-                    labels = ["Register left", "Register top", "Register right", "Register bottom"]
-                    for i, label in enumerate(labels):
-                        lo, hi = (0.0, 0.95) if i < 2 else (0.05, 1.0)
-                        st.slider(
-                            label, lo, hi, float(roi[i]), 0.001,
-                            key=f'{ch["id"]}_roi_slider_{i}',
+                        preview = draw_overlay(frame, roi, dials)
+                        preview = cv2.resize(preview, (480, int(480 * preview.shape[0] / preview.shape[1])))
+                        st.image(cv2.cvtColor(preview, cv2.COLOR_BGR2RGB), use_container_width=True)
+                        st.markdown('<span style="color:#55d6be;font-size:11px">● STREAM RECEIVING</span>', unsafe_allow_html=True)
+                    else:
+                        st.markdown(
+                            '<div style="height:145px;border:1px dashed #52677e;border-radius:10px;display:flex;'
+                            'align-items:center;justify-content:center;color:#93a8bd;background:#101d2c">WAITING FOR HTTP FRAME</div>',
+                            unsafe_allow_html=True,
                         )
-                    for i, dial in enumerate(dials):
-                        st.markdown(f'**{dial["name"]}**')
-                        cx = st.slider("Center X", 0.0, 1.0, float(dial["center"][0]), 0.001, key=f'{ch["id"]}_cx_{i}')
-                        cy = st.slider("Center Y", 0.0, 1.0, float(dial["center"][1]), 0.001, key=f'{ch["id"]}_cy_{i}')
-                        radius = st.slider("Radius", 0.02, 0.20, float(dial["radius"]), 0.001, key=f'{ch["id"]}_r_{i}')
-
-                if "result" in result_data:
-                    with st.expander("VIEW ANALYSIS DETAILS"):
-                        r = result_data["result"]
-                        st.write("**Black digits:**", r["integer_digits"] or "Needs review")
-                        st.write("**Fractional estimate:**", r["fractional_estimate_m3"])
-                        for dial in r["fractional_dials"]:
-                            st.write(f'{dial["name"]}: {dial["value"]} · confidence {dial["confidence"]}')
-                        st.image(result_data["annotated"], caption="Triggered frame with detection overlay", use_container_width=True)
-                        st.download_button(
-                            "Download station JSON",
-                            json.dumps(r, indent=2),
-                            file_name=f'{ch["id"]}_reading.json',
-                            mime="application/json",
-                            key=f'download_{ch["id"]}',
+                        error = camera.last_error if camera else "No URL configured"
+                        st.caption(error[:100])
+                    st.markdown('<div class="wm-label">Latest meter reading · m³</div>', unsafe_allow_html=True)
+                    if "result" in result_data:
+                        reading = result_data["result"].get("candidate_reading_m3")
+                        digits = result_data["result"].get("integer_digits") or "REVIEW"
+                        st.markdown(
+                            f'<div class="wm-reading">{format(reading, ".4f") if reading is not None else "NEEDS REVIEW"}</div>'
+                            f'<div class="wm-muted">Register: {digits} · OCR confidence: {result_data["result"]["ocr_confidence"]:.2f}</div>',
+                            unsafe_allow_html=True,
                         )
+                    elif "error" in result_data:
+                        st.error(result_data["error"])
+                    else:
+                        st.markdown('<div class="wm-reading">— — — — —</div><div class="wm-muted">No trigger result yet</div>', unsafe_allow_html=True)
+
+                    if st.button("TRIGGER READ", key=f'trigger_{ch["id"]}', use_container_width=True):
+                        if frame is None:
+                            st.error("No frame received from this camera.")
+                        else:
+                            roi, dials = current_channel_geometry(ch)
+                            with st.spinner(f'Processing {ch["name"]}...'):
+                                try:
+                                    result, annotated = analyze(frame.copy(), roi, dials, ch["id"])
+                                    results[ch["id"]] = {
+                                        "result": result,
+                                        "annotated": cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
+                                    }
+                                    st.session_state["channel_results"] = results
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Analysis failed: {exc}")
+
+                    with st.expander("⚙ CALIBRATION / CHANNEL SETTINGS"):
+                        roi, dials = current_channel_geometry(ch)
+                        st.caption("Adjust normalized coordinates for this station only.")
+                        labels = ["Register left", "Register top", "Register right", "Register bottom"]
+                        for i, label in enumerate(labels):
+                            lo, hi = (0.0, 0.95) if i < 2 else (0.05, 1.0)
+                            st.slider(
+                                label, lo, hi, float(roi[i]), 0.001,
+                                key=f'{ch["id"]}_roi_slider_{i}',
+                            )
+                        for i, dial in enumerate(dials):
+                            st.markdown(f'**{dial["name"]}**')
+                            cx = st.slider("Center X", 0.0, 1.0, float(dial["center"][0]), 0.001, key=f'{ch["id"]}_cx_{i}')
+                            cy = st.slider("Center Y", 0.0, 1.0, float(dial["center"][1]), 0.001, key=f'{ch["id"]}_cy_{i}')
+                            radius = st.slider("Radius", 0.02, 0.20, float(dial["radius"]), 0.001, key=f'{ch["id"]}_r_{i}')
+
+                    if "result" in result_data:
+                        with st.expander("VIEW ANALYSIS DETAILS"):
+                            r = result_data["result"]
+                            st.write("**Black digits:**", r["integer_digits"] or "Needs review")
+                            st.write("**Fractional estimate:**", r["fractional_estimate_m3"])
+                            for dial in r["fractional_dials"]:
+                                st.write(f'{dial["name"]}: {dial["value"]} · confidence {dial["confidence"]}')
+                            st.image(result_data["annotated"], caption="Triggered frame with detection overlay", use_container_width=True)
+                            st.download_button(
+                                "Download station JSON",
+                                json.dumps(r, indent=2),
+                                file_name=f'{ch["id"]}_reading.json',
+                                mime="application/json",
+                                key=f'download_{ch["id"]}',
+                            )
 
 camera_wall()
 
