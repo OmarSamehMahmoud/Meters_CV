@@ -1,0 +1,235 @@
+from __future__ import annotations
+
+import json
+import math
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+
+import cv2
+import easyocr
+import numpy as np
+
+from src.watermeter.camera_stream import LatestFrameCamera
+
+ROOT = Path(__file__).resolve().parents[2]
+CHANNELS = json.loads((ROOT / "configs" / "camera_channels.json").read_text(encoding="utf-8"))["cameras"]
+PRESETS = json.loads((ROOT / "configs" / "reference_presets.json").read_text(encoding="utf-8"))["reference_presets"]
+WEIGHTS = {"x0.1": 0.1, "x0.01": 0.01, "x0.001": 0.001, "x0.0001": 0.0001}
+OCR_LOCK = threading.Lock()
+_reader = None
+_reader_lock = threading.Lock()
+
+
+def get_reader():
+    global _reader
+    with _reader_lock:
+        if _reader is None:
+            _reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+        return _reader
+
+
+def channel_geometry(channel):
+    preset = channel.get("preset", next(iter(PRESETS)))
+    cfg = PRESETS[preset]
+    return list(cfg["integer_register_roi"]), [dict(d) for d in cfg["dials"]]
+
+
+def pixel_roi(roi, w, h):
+    x1, y1, x2, y2 = roi
+    return (max(0, min(w - 1, int(round(x1 * w)))),
+            max(0, min(h - 1, int(round(y1 * h)))),
+            max(1, min(w, int(round(x2 * w)))),
+            max(1, min(h, int(round(y2 * h)))))
+
+
+def dial_geometry(dial, w, h):
+    return (int(round(dial["center"][0] * w)), int(round(dial["center"][1] * h)),
+            max(5, int(round(dial["radius"] * min(w, h)))))
+
+
+def read_digits(crop):
+    if crop.size == 0:
+        return "", []
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    gray = cv2.resize(gray, None, fx=2.5, fy=2.5, interpolation=cv2.INTER_CUBIC)
+    gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4)).apply(gray)
+    with OCR_LOCK:
+        results = get_reader().readtext(gray, allowlist="0123456789", detail=1,
+            paragraph=False, text_threshold=0.35, low_text=0.25, link_threshold=0.25)
+    found = []
+    for box, text, confidence in results:
+        digits = "".join(c for c in text if c.isdigit())
+        if digits:
+            found.append((min(p[0] for p in box), digits, float(confidence)))
+    found.sort(key=lambda x: x[0])
+    return "".join(x[1] for x in found), found
+
+
+def detect_pointer(image, dial):
+    h, w = image.shape[:2]
+    cx, cy, radius = dial_geometry(dial, w, h)
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    red = (((hsv[:, :, 0] <= 12) | (hsv[:, :, 0] >= 170)) &
+           (hsv[:, :, 1] >= 75) & (hsv[:, :, 2] >= 55))
+    yy, xx = np.ogrid[:h, :w]
+    dist = np.sqrt((xx - cx) ** 2 + (yy - cy) ** 2)
+    annulus = (dist >= radius * 0.25) & (dist <= radius * 0.90)
+    ys, xs = np.where(red & annulus)
+    ratio = len(xs) / max(1, int(np.count_nonzero(annulus)))
+    if len(xs) < 12:
+        return {"name": dial["name"], "value": None, "confidence": 0.0,
+                "angle_degrees": None, "tip": None, "center": [cx, cy],
+                "status": "Pointer not detected"}
+    idx = int(np.argmax((xs - cx) ** 2 + (ys - cy) ** 2))
+    tx, ty = int(xs[idx]), int(ys[idx])
+    angle = (math.degrees(math.atan2(ty - cy, tx - cx)) + 90.0) % 360.0
+    confidence = 0.82 if ratio <= 0.15 else (0.48 if ratio <= 0.24 else 0.25)
+    return {"name": dial["name"], "value": round(angle / 36.0, 3),
+            "confidence": confidence, "angle_degrees": round(angle, 2),
+            "tip": [tx, ty], "center": [cx, cy],
+            "status": "Experimental estimate" if confidence >= 0.7 else "Needs manual review"}
+
+
+def draw_overlay(image, roi, dials, pointer_results=None):
+    out = image.copy()
+    h, w = out.shape[:2]
+    x1, y1, x2, y2 = pixel_roi(roi, w, h)
+    cv2.rectangle(out, (x1, y1), (x2, y2), (55, 220, 160), 2)
+    cv2.putText(out, "DIGITS ROI", (x1, max(20, y1 - 7)), cv2.FONT_HERSHEY_SIMPLEX, .5, (55, 220, 160), 2)
+    by_name = {p["name"]: p for p in (pointer_results or [])}
+    for dial in dials:
+        cx, cy, radius = dial_geometry(dial, w, h)
+        cv2.circle(out, (cx, cy), radius, (0, 165, 255), 2)
+        cv2.drawMarker(out, (cx, cy), (0, 165, 255), cv2.MARKER_CROSS, 12, 2)
+        item = by_name.get(dial["name"])
+        if item and item["tip"]:
+            cv2.arrowedLine(out, (cx, cy), tuple(item["tip"]), (0, 220, 0), 2)
+    return out
+
+
+def analyze(frame, roi, dials, channel_id):
+    h, w = frame.shape[:2]
+    x1, y1, x2, y2 = pixel_roi(roi, w, h)
+    if x2 <= x1 or y2 <= y1:
+        raise ValueError("Invalid digit ROI. Adjust channel calibration.")
+    digits, ocr = read_digits(frame[y1:y2, x1:x2])
+    pointers = [detect_pointer(frame, dial) for dial in dials]
+    valid = [p for p in pointers if p["value"] is not None and p["confidence"] >= .7]
+    fractional = sum(p["value"] * WEIGHTS[p["name"].lower()] for p in valid)
+    all_valid = len(digits) == 5 and len(valid) == 4
+    result = {
+        "channel_id": channel_id,
+        "status": "experimental_candidate" if all_valid else "needs_review",
+        "integer_digits": digits if len(digits) == 5 else None,
+        "fractional_dials": pointers,
+        "fractional_estimate_m3": round(fractional, 6) if valid else None,
+        "candidate_reading_m3": round(int(digits) + fractional, 6) if all_valid else None,
+        "ocr_confidence": round(float(np.mean([x[2] for x in ocr])) if ocr else 0.0, 4),
+        "ocr_raw": [{"text": x[1], "confidence": round(x[2], 4)} for x in ocr],
+        "frame_size": [w, h], "captured_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "warning": "Experimental only. Dial zero-angle calibration and end-to-end accuracy are not validated; do not use for billing."
+    }
+    return result, draw_overlay(frame, roi, dials, pointers)
+
+
+class LiveMeterService:
+    def __init__(self):
+        self.channels = [dict(c) for c in CHANNELS]
+        self.cameras = {}
+        self.calibrations = {}
+        self.results = {}
+        self.lock = threading.RLock()
+        for ch in self.channels:
+            url = ch["stream_url"].strip()
+            if url and url not in self.cameras:
+                self.cameras[url] = LatestFrameCamera(url)
+            self.calibrations[ch["id"]] = channel_geometry(ch)
+
+    def camera_for(self, channel_id):
+        ch = next((c for c in self.channels if c["id"] == channel_id), None)
+        return self.cameras.get(ch["stream_url"]) if ch else None
+
+    def overview(self):
+        items = []
+        for ch in self.channels:
+            cam = self.camera_for(ch["id"])
+            frame = cam.latest() if cam else None
+            with self.lock:
+                result = self.results.get(ch["id"])
+            items.append({
+                **ch,
+                "online": bool(cam and cam.connected and frame is not None),
+                "last_error": cam.last_error if cam else "No stream URL",
+                "has_frame": frame is not None,
+                "result": result,
+            })
+        return {"channels": items, "online_channels": sum(x["online"] for x in items),
+                "total_channels": len(items), "unique_streams": len(self.cameras),
+                "mode": "demo_shared_stream" if len(self.cameras) < len(self.channels) else "multi_camera"}
+
+    def frame_jpeg(self, channel_id):
+        cam = self.camera_for(channel_id)
+        frame = cam.latest() if cam else None
+        if frame is None:
+            return None
+        ok, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 82])
+        return encoded.tobytes() if ok else None
+
+    def set_calibration(self, channel_id, payload):
+        if channel_id not in self.calibrations:
+            raise KeyError(channel_id)
+        roi = payload.get("roi")
+        dials = payload.get("dials")
+        if not isinstance(roi, list) or len(roi) != 4 or not isinstance(dials, list) or len(dials) != 4:
+            raise ValueError("Calibration requires a 4-value ROI and 4 dials.")
+        if not all(0 <= float(v) <= 1 for v in roi):
+            raise ValueError("ROI coordinates must be normalized between 0 and 1.")
+        with self.lock:
+            self.calibrations[channel_id] = ([float(v) for v in roi], dials)
+        return {"channel_id": channel_id, "roi": roi, "dials": dials}
+
+    def trigger(self, channel_id):
+        cam = self.camera_for(channel_id)
+        frame = cam.latest() if cam else None
+        if frame is None:
+            raise RuntimeError("No frame received from this camera.")
+        with self.lock:
+            roi, dials = self.calibrations[channel_id]
+        result, annotated = analyze(frame.copy(), roi, dials, channel_id)
+        ok, encoded = cv2.imencode(".jpg", annotated)
+        result["annotated_jpeg"] = encoded.tobytes().hex() if ok else None
+        with self.lock:
+            self.results[channel_id] = result
+        return result
+
+    def trigger_all(self, workers=4):
+        jobs = []
+        for ch in self.channels:
+            cam = self.camera_for(ch["id"])
+            frame = cam.latest() if cam else None
+            if frame is not None:
+                with self.lock:
+                    roi, dials = self.calibrations[ch["id"]]
+                jobs.append((ch["id"], frame.copy(), roi, dials))
+        if not jobs:
+            raise RuntimeError("No camera frames are available.")
+        outcomes = []
+        with ThreadPoolExecutor(max_workers=max(1, min(int(workers), 8))) as pool:
+            futures = {pool.submit(analyze, f, r, d, cid): cid for cid, f, r, d in jobs}
+            for future in as_completed(futures):
+                cid = futures[future]
+                try:
+                    result, annotated = future.result()
+                    ok, encoded = cv2.imencode(".jpg", annotated)
+                    result["annotated_jpeg"] = encoded.tobytes().hex() if ok else None
+                    with self.lock:
+                        self.results[cid] = result
+                    outcomes.append({"channel_id": cid, "ok": True, "result": result})
+                except Exception as exc:
+                    outcomes.append({"channel_id": cid, "ok": False, "error": str(exc)})
+        return {"processed": len(outcomes), "outcomes": outcomes}
+
+
+service = LiveMeterService()
