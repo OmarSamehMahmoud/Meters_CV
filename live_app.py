@@ -313,7 +313,7 @@ def camera_wall():
                     unsafe_allow_html=True,
                 )
                 if frame is not None:
-                    roi, dials = geometries[ch["id"]]
+                    roi, dials = current_channel_geometry(ch)
                     preview = draw_overlay(frame, roi, dials)
                     preview = cv2.resize(preview, (480, int(480 * preview.shape[0] / preview.shape[1])))
                     st.image(cv2.cvtColor(preview, cv2.COLOR_BGR2RGB), use_container_width=True)
@@ -344,7 +344,7 @@ def camera_wall():
                     if frame is None:
                         st.error("No frame received from this camera.")
                     else:
-                        roi, dials = geometries[ch["id"]]
+                        roi, dials = current_channel_geometry(ch)
                         with st.spinner(f'Processing {ch["name"]}...'):
                             try:
                                 result, annotated = analyze(frame.copy(), roi, dials, ch["id"])
@@ -358,7 +358,7 @@ def camera_wall():
                                 st.error(f"Analysis failed: {exc}")
 
                 with st.expander("⚙ CALIBRATION / CHANNEL SETTINGS"):
-                    roi, dials = geometries[ch["id"]]
+                    roi, dials = current_channel_geometry(ch)
                     st.caption("Adjust normalized coordinates for this station only.")
                     labels = ["Register left", "Register top", "Register right", "Register bottom"]
                     for i, label in enumerate(labels):
@@ -372,7 +372,7 @@ def camera_wall():
                         cx = st.slider("Center X", 0.0, 1.0, float(dial["center"][0]), 0.001, key=f'{ch["id"]}_cx_{i}')
                         cy = st.slider("Center Y", 0.0, 1.0, float(dial["center"][1]), 0.001, key=f'{ch["id"]}_cy_{i}')
                         radius = st.slider("Radius", 0.02, 0.20, float(dial["radius"]), 0.001, key=f'{ch["id"]}_r_{i}')
-                        updated_dials.append({"name": dial["name"], "center": [cx, cy], "radius": radius})
+
                 if "result" in result_data:
                     with st.expander("VIEW ANALYSIS DETAILS"):
                         r = result_data["result"]
