@@ -26,9 +26,11 @@ npm run dev
 Open http://127.0.0.1:5173
 
 ## Notes
-- Configure camera stream URLs in `configs/camera_channels.json`.
-- All eight channels currently use one physical stream for UI/trigger testing; they will display the same camera feed until unique ESP32-CAM URLs are configured.
-- The API shares one MJPEG reader for each unique stream URL.
+- Configure the eight independent camera stream URLs in `configs/camera_channels.json`.
+- The dashboard displays each camera's configured IP as a clickable link to its raw MJPEG stream.
+- The API creates one MJPEG reader for each unique stream URL. The recommended offline deployment has eight ESP32-CAM devices joining the laptop's single Mobile Hotspot, each with a unique static IP.
+- The backend reads camera configuration at startup; restart Uvicorn after changing camera IPs or stream URLs.
+- Follow `docs/eight_camera_local_http_architecture.md` and flash `esp32_cam/WaterMeterVision_HTTP_Stream/WaterMeterVision_HTTP_Stream.ino` with a unique `CAMERA_INDEX` on each camera.
 - Trigger All processes the latest available frame for each logical channel using the configured worker count. EasyOCR access is serialized for stability.
 - Calibration is held in API memory for the current process and resets when the backend restarts.
 - Current OCR and rotary-dial estimates are experimental and are not approved for billing.
