@@ -13,6 +13,7 @@
 
 #include "esp_camera.h"
 #include <Arduino.h>
+#include <esp_arduino_version.h>
 #include <WiFi.h>
 #include "esp_http_server.h"
 
