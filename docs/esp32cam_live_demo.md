@@ -4,7 +4,7 @@ This demo keeps the standard Arduino IDE **CameraWebServer** firmware on the ESP
 
 ## Camera URL
 
-The camera web page may be reachable at `http://192.168.137.222`. For the standard Espressif Arduino CameraWebServer example, the MJPEG endpoint is normally `http://192.168.137.222:81/stream`. Open the stream URL in a browser on the same LAN first. If your firmware fork uses another endpoint, enter its actual stream URL in the sidebar.
+The camera web page may be reachable at `http://192.168.137.185`. For the standard Espressif Arduino CameraWebServer example, the MJPEG endpoint is normally `http://192.168.137.185:81/stream`. Open the stream URL in a browser on the same LAN first. If your firmware fork uses another endpoint, enter its actual stream URL in the sidebar.
 
 ## Install (Windows PowerShell)
 
@@ -50,3 +50,6 @@ The live capture thread retains only the newest frame, preventing a growing queu
 - If OpenCV cannot decode the stream, test the URL in a browser or VLC and check Windows Firewall.
 - If the video is unstable, lower the camera frame size or JPEG quality in CameraWebServer.
 - Old still-photo presets are only starting points. Calibrate the ROIs using the actual live camera framing.
+
+
+For the eight-camera local HTTP design, static IP plan and direct-link limitations, see [eight_camera_local_http_architecture.md](eight_camera_local_http_architecture.md).
