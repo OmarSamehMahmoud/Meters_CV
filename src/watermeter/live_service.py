@@ -177,6 +177,13 @@ class LiveMeterService:
         ok, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 82])
         return encoded.tobytes() if ok else None
 
+    def get_calibration(self, channel_id):
+        if channel_id not in self.calibrations:
+            raise KeyError(channel_id)
+        with self.lock:
+            roi, dials = self.calibrations[channel_id]
+            return {"channel_id": channel_id, "roi": list(roi), "dials": [dict(d) for d in dials]}
+
     def set_calibration(self, channel_id, payload):
         if channel_id not in self.calibrations:
             raise KeyError(channel_id)
@@ -198,8 +205,6 @@ class LiveMeterService:
         with self.lock:
             roi, dials = self.calibrations[channel_id]
         result, annotated = analyze(frame.copy(), roi, dials, channel_id)
-        ok, encoded = cv2.imencode(".jpg", annotated)
-        result["annotated_jpeg"] = encoded.tobytes().hex() if ok else None
         with self.lock:
             self.results[channel_id] = result
         return result
@@ -222,8 +227,6 @@ class LiveMeterService:
                 cid = futures[future]
                 try:
                     result, annotated = future.result()
-                    ok, encoded = cv2.imencode(".jpg", annotated)
-                    result["annotated_jpeg"] = encoded.tobytes().hex() if ok else None
                     with self.lock:
                         self.results[cid] = result
                     outcomes.append({"channel_id": cid, "ok": True, "result": result})
