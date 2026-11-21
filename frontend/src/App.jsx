@@ -15,7 +15,7 @@ function Metric({ icon: Icon, label, value, detail, tone = "mint" }) {
   return <div className="metric-card"><div className={`metric-icon ${tone}`}><Icon size={18}/></div><div className="metric-copy"><span>{label}</span><strong>{value}</strong><small>{detail}</small></div><div className="metric-spark"><Activity size={26}/></div></div>;
 }
 
-function CameraCard({ camera, frameTick, onTrigger, onConfigure, busy, lang }) {
+function CameraCard({ camera, frameTick, frameSourceId, onTrigger, onConfigure, busy, lang }) {
   const online = camera.online;
   const result = camera.result;
   const reading = result?.candidate_reading_m3;
@@ -26,7 +26,7 @@ function CameraCard({ camera, frameTick, onTrigger, onConfigure, busy, lang }) {
       <div className={`status-pill ${online ? "online" : "offline"}`}><span/>{online ? t("LIVE","مباشر") : t("OFFLINE","غير متصل")}</div>
     </div>
     <div className="feed-wrap">
-      {online ? <img src={`${API}/cameras/${camera.id}/frame?t=${frameTick}`} alt={`${camera.name} live meter feed`} /> :
+      {online ? <img src={`${API}/cameras/${frameSourceId || camera.id}/frame?t=${frameTick}`} alt={`${camera.name} live meter feed`} /> :
         <div className="feed-placeholder"><WifiOff size={25}/><strong>{t("Signal unavailable","الإشارة غير متاحة")}</strong><span>{camera.last_error || t("Waiting for camera stream","في انتظار بث الكاميرا")}</span></div>}
       <div className="feed-overlay"><span className="rec-dot"/> {t("LIVE MONITOR","مراقبة مباشرة")}</div>
       <div className="feed-corner"><Aperture size={15}/> MJPEG</div>
@@ -91,7 +91,7 @@ export default function App() {
     try { const res = await fetch(`${API}/overview`); if (!res.ok) throw new Error(); setData(await res.json()); setApiOnline(true); }
     catch { setApiOnline(false); }
   }, []);
-  useEffect(() => { refresh(); const a=setInterval(refresh,1500); const b=setInterval(()=>setFrameTick(Date.now()),850); return ()=>{clearInterval(a);clearInterval(b)}; },[refresh]);
+  useEffect(() => { refresh(); const a=setInterval(refresh,1500); const b=setInterval(()=>setFrameTick(Date.now()),500); return ()=>{clearInterval(a);clearInterval(b)}; },[refresh]);
   useEffect(() => { if(!toast) return; const t=setTimeout(()=>setToast(""),3200); return ()=>clearTimeout(t); },[toast]);
 
   const trigger = async (id) => {
@@ -137,7 +137,7 @@ export default function App() {
         <section className="section-heading"><div><div className="overline">{t("NETWORK OVERVIEW","نظرة عامة على الشبكة")}</div><h2>{t("Camera stations","محطات الكاميرات")} <span className="count-tag">{data.total_channels||8} {t("CHANNELS","قنوات")}</span></h2><p>{t("Monitor live feeds and trigger meter recognition on demand.","راقب البث المباشر وابدأ التعرف على قراءة العداد عند الحاجة.")}</p></div><div className="heading-actions"><div className="search-box"><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder={t("Search stations…","ابحث عن محطة…")}/><Command size={13}/></div><button className="btn-secondary compact" onClick={refresh}><RefreshCw size={14}/> {t("Refresh","تحديث")}</button></div></section>
         <div className="filter-row"><div className="filter-tabs">{[["all",t("All stations","كل المحطات")],["online",t("Online","متصلة")],["offline",t("Offline","غير متصلة")]].map(([v,label])=><button key={v} className={filter===v?"selected":""} onClick={()=>setFilter(v)}>{label}<span>{v==="all"?data.channels.length:data.channels.filter(c=>v==="online"?c.online:!c.online).length}</span></button>)}</div><div className="worker-control"><span>{t("PARALLEL WORKERS","مهام متوازية")}</span><select value={workers} onChange={e=>setWorkers(Number(e.target.value))}><option value={1}>1</option><option value={2}>2</option><option value={4}>4</option><option value={8}>8</option></select><span className="worker-info" title={t("OCR access is serialized for stability","يتم تنظيم وصول OCR لضمان الاستقرار")}><CircleHelp size={14}/></span></div></div>
 
-        <section className="camera-grid">{channels.map(camera=><CameraCard key={camera.id} camera={camera} frameTick={frameTick} busy={busy[camera.id] || batchBusy} onTrigger={trigger} onConfigure={setSelected} lang={lang}/>)}</section>
+        <section className="camera-grid">{channels.map(camera=><CameraCard key={camera.id} camera={camera} frameTick={frameTick} frameSourceId={data.mode === "demo_shared_stream" ? "cam_01" : camera.id} busy={busy[camera.id] || batchBusy} onTrigger={trigger} onConfigure={setSelected} lang={lang}/>)}</section>
         {channels.length===0 && <div className="empty-state">{t("No stations match your search.","لا توجد محطات تطابق البحث.")}</div>}
         <footer className="page-footer"><span>WATERMETERVISION <b>·</b> {t("LOCAL-FIRST EDGE PLATFORM","منصة معالجة محلية")}</span><span><span className={apiOnline?"pulse-dot":"pulse-dot danger"}/> {apiOnline?t("API CONNECTED","الخادم متصل"):t("WAITING FOR API","في انتظار الخادم")} <b>·</b> {t("EXPERIMENTAL CV OUTPUT","نتائج رؤية حاسوبية تجريبية")}</span></footer>
       </div>
