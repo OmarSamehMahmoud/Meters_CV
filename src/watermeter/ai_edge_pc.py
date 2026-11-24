@@ -114,18 +114,65 @@ def _pixel_roi(roi: list[float], width: int, height: int):
     return left, top, right, bottom
 
 
-def _read_continuous_digit(crop: np.ndarray) -> dict:
-    scores = _softmax(_infer(DIGIT_MODEL, crop))
-    if scores.size != 100:
-        raise RuntimeError(
-            f"Expected the upstream 100-output continuous digit model, got {scores.size} outputs."
-        )
-    index = int(np.argmax(scores))
+def _decode_double_hybrid10(outputs: np.ndarray) -> dict:
+    """Port of AI-on-the-edge-device's DoubleHyprid10 output decoder.
+
+    The upstream 10-neuron model predicts a digit plus its adjacent-wheel
+    transition strengths. It is NOT a 10-class argmax-only classifier.
+    """
+    values = np.asarray(outputs, dtype=np.float32).reshape(-1)
+    if values.size != 10:
+        raise ValueError(f"DoubleHyprid10 requires 10 outputs, got {values.size}.")
+
+    digit = int(np.argmax(values))
+    next_digit = (digit + 1) % 10
+    previous_digit = (digit - 1) % 10
+    center = float(values[digit])
+    next_score = float(values[next_digit])
+    previous_score = float(values[previous_digit])
+
+    if next_score > previous_score:
+        denominator = center + next_score
+        fit = denominator
+        fraction = next_score / denominator if abs(denominator) > 1e-12 else 0.0
+        continuous = digit + fraction
+    else:
+        denominator = center + previous_score
+        fit = denominator
+        fraction = previous_score / denominator if abs(denominator) > 1e-12 else 0.0
+        continuous = digit - fraction
+
+    continuous %= 10.0
     return {
-        "continuous_value": index / 10.0,
-        "class_index": index,
-        "confidence": round(float(scores[index]), 4),
+        "continuous_value": float(continuous),
+        "class_index": digit,
+        "confidence": round(float(fit), 4),
+        "fit": round(float(fit), 6),
+        "model_outputs": [float(v) for v in values],
     }
+
+
+def _read_continuous_digit(crop: np.ndarray) -> dict:
+    outputs = _infer(DIGIT_MODEL, crop)
+    if outputs.size == 10:
+        # This is the model type used by the official firmware:
+        # CNNType::DoubleHyprid10 (not a 100-class classifier).
+        return _decode_double_hybrid10(outputs)
+    if outputs.size == 100:
+        # Official Digit100 models encode each tenth as an output neuron.
+        scores = _softmax(outputs)
+        index = int(np.argmax(scores))
+        return {
+            "continuous_value": index / 10.0,
+            "class_index": index,
+            "confidence": round(float(scores[index]), 4),
+            "fit": round(float(scores[index]), 6),
+        }
+    raise RuntimeError(
+        "Unsupported digit model output shape: "
+        f"{outputs.size} outputs. The configured upstream model is expected "
+        "to use the official 10-output DoubleHyprid10 decoder."
+    )
 
 
 def _evaluate_hybrid_digit(number: float, predecessor: float, evaluated_predecessor: int) -> int:
@@ -221,11 +268,11 @@ def analyze_ai_edge(
             )
     for index, item in enumerate(digit_cells):
         item["digit"] = evaluated[index]
-        item["status"] = "read" if item["confidence"] >= 0.20 else "low_confidence"
+        item["status"] = "read" if item["fit"] > 0.0 else "low_fit"
 
     digits = "".join(str(item["digit"]) for item in digit_cells)
     digits_complete = len(digit_cells) == expected_digits and all(
-        item["confidence"] >= 0.20 for item in digit_cells
+        item["fit"] > 0.0 for item in digit_cells
     )
 
     analog_results = []
@@ -284,7 +331,7 @@ def analyze_ai_edge(
         "analog_model": ANALOG_MODEL.name,
         "integer_digits": digits if digits_complete else None,
         "digit_cells": digit_cells,
-        "digit_recognition_mode": "original_ai_on_the_edge_tflite_100_class_hybrid",
+        "digit_recognition_mode": "original_ai_on_the_edge_double_hybrid_10",
         "fractional_dials": analog_results,
         "fractional_estimate_m3": round(fractional, 6) if analog_results else None,
         "candidate_reading_m3": candidate,
