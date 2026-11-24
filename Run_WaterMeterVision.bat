@@ -1,13 +1,13 @@
 @echo off
 setlocal
-title WaterMeterVision Launcher
+title RAGURA WM Launcher
 
 REM Run this file from the project root (the folder containing backend and frontend).
 cd /d "%~dp0"
 
 echo.
 echo ============================================
-echo       WaterMeterVision - System Launcher
+echo       RAGURA WM - System Launcher
 echo ============================================
 echo.
 
@@ -54,10 +54,10 @@ if not exist "frontend\node_modules" (
 )
 
 echo [2/3] Starting FastAPI backend...
-start "WaterMeterVision Backend" cmd /k "cd /d ""%~dp0"" && call "".venv\Scripts\activate.bat"" && python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000"
+start "RAGURA WM Backend" cmd /k "cd /d ""%~dp0"" && call "".venv\Scripts\activate.bat"" && python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000"
 
 echo [3/3] Starting React dashboard...
-start "WaterMeterVision Frontend" cmd /k "cd /d ""%~dp0frontend"" && npm run dev -- --host 127.0.0.1"
+start "RAGURA WM Frontend" cmd /k "cd /d ""%~dp0frontend"" && npm run dev -- --host 127.0.0.1"
 
 echo.
 echo Waiting for services to initialize...
