@@ -41,3 +41,10 @@ def test_explicit_split_requires_all_partitions():
     frame["split"] = "train"
     with pytest.raises(ValueError, match="non-empty"):
         split_frame(frame)
+
+
+def test_automatic_split_requires_enough_distinct_meters():
+    frame = _frame()
+    frame = frame[frame.meter_id.isin(["M1", "M2", "M3"])]
+    with pytest.raises(ValueError, match="at least 4"):
+        split_frame(frame)
