@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import RecognitionWorkbench from "./RecognitionWorkbench.jsx";
 import {
   Activity, AlertTriangle, Aperture, ArrowDownRight, ArrowUpRight, Bell, Check,
   ChevronRight, CircleHelp, Clock3, Command, Cpu, Download, Droplets, Gauge,
@@ -86,6 +87,7 @@ export default function App() {
   const [filter, setFilter] = useState("all");
   const [workers, setWorkers] = useState(4);
   const [navOpen, setNavOpen] = useState(false);
+  const [activePage, setActivePage] = useState("overview");
 
   const refresh = useCallback(async () => {
     try { const res = await fetch(`${API}/overview`); if (!res.ok) throw new Error(); setData(await res.json()); setApiOnline(true); }
@@ -116,19 +118,21 @@ export default function App() {
 
   return <div className="app-shell" data-theme={theme} dir={lang === "ar" ? "rtl" : "ltr"}>
     <aside className={`sidebar ${navOpen?"nav-open":""}`}>
-      <div className="brand"><div className="brand-mark"><Droplets size={22}/></div><div><b>WATERMETER<span>VISION</span></b><small>EDGE INTELLIGENCE</small></div><button className="mobile-close" onClick={()=>setNavOpen(false)}><X size={18}/></button></div>
+      <div className="brand"><div className="brand-mark"><Droplets size={22}/></div><div><b>RAGURA<span>™</span></b><small>INTELLIGENT METER PLATFORM</small></div><button className="mobile-close" onClick={()=>setNavOpen(false)}><X size={18}/></button></div>
       <div className="workspace-label">{t("WORKSPACE","مساحة العمل")}</div>
-      <button className="nav-item active"><LayoutDashboard size={17}/> {t("Control Center","لوحة التحكم")} <span className="nav-count">08</span></button>
+      <button className={`nav-item ${activePage==="overview"?"active":""}`} onClick={()=>setActivePage("overview")}><LayoutDashboard size={17}/> {t("Overview","نظرة عامة")} <span className="nav-count">08</span></button>
+      <button className={`nav-item ${activePage==="workbench"?"active":""}`} onClick={()=>{setActivePage("workbench");setNavOpen(false)}}><Aperture size={17}/> {t("Recognition Workbench","معمل التعرف")}</button>
       <button className="nav-item" onClick={()=>setToast(t("Station history will be enabled with persistent storage.","سيتم تفعيل سجل المحطات عند إضافة التخزين الدائم."))}><Clock3 size={17}/> {t("Reading History","سجل القراءات")}</button>
       <button className="nav-item" onClick={()=>setToast(t("Network configuration is managed in configs/camera_channels.json.","إعدادات الشبكة موجودة في configs/camera_channels.json."))}><Radio size={17}/> {t("Camera Network","شبكة الكاميرات")}</button>
       <button className="nav-item" onClick={()=>setToast(t("System settings are available in the backend configuration.","إعدادات النظام متاحة في إعدادات الخادم."))}><Settings2 size={17}/> {t("System Settings","إعدادات النظام")}</button>
-      <div className="sidebar-bottom"><div className="edge-status"><span className={apiOnline?"pulse-dot":"pulse-dot danger"}/><div><b>{apiOnline?t("EDGE NODE ONLINE","وحدة المعالجة متصلة"):t("API DISCONNECTED","الخادم غير متصل")}</b><small>{t("LOCAL PROCESSING NODE","وحدة معالجة محلية")}</small></div></div><div className="sidebar-foot">{t("WATERVISION CONSOLE","وحدة تحكم WaterVision")} <span>v1.0.0</span></div></div>
+      <div className="sidebar-bottom"><div className="edge-status"><span className={apiOnline?"pulse-dot":"pulse-dot danger"}/><div><b>{apiOnline?t("EDGE NODE ONLINE","وحدة المعالجة متصلة"):t("API DISCONNECTED","الخادم غير متصل")}</b><small>{t("LOCAL PROCESSING NODE","وحدة معالجة محلية")}</small></div></div><div className="sidebar-foot">{t("RAGURA CONSOLE","وحدة تحكم RAGURA")} <span>v1.0.0</span></div></div>
     </aside>
 
     <main className="main-area">
-      <header className="topbar"><div className="topbar-left"><button className="mobile-menu" onClick={()=>setNavOpen(true)}><Menu size={19}/></button><div className="breadcrumb">{t("Workspace","مساحة العمل")} <ChevronRight size={14}/> <b>{t("Control Center","لوحة التحكم")}</b></div></div><div className="topbar-right"><div className="local-chip"><ShieldCheck size={14}/> {t("LOCAL NETWORK","شبكة محلية")} <i/></div><button className="icon-button" onClick={refresh} title={t("Refresh","تحديث")}><RefreshCw size={17}/></button><button className="icon-button" onClick={()=>setTheme(v=>v==="dark"?"light":"dark")} title={t("Toggle theme","تغيير المظهر")}>{theme==="dark"?<Sun size={17}/>:<Moon size={17}/>}</button><button className="language-toggle" onClick={()=>setLang(v=>v==="en"?"ar":"en")} title={t("Switch language","تغيير اللغة")}><Languages size={15}/>{lang==="en"?"العربية":"English"}</button><button className="icon-button" onClick={()=>setToast(t("No new alerts.","لا توجد تنبيهات جديدة."))} title={t("Notifications","التنبيهات")}><Bell size={17}/></button><div className="avatar">WM</div></div></header>
+      <header className="topbar"><div className="topbar-left"><button className="mobile-menu" onClick={()=>setNavOpen(true)}><Menu size={19}/></button><div className="breadcrumb">{t("Workspace","مساحة العمل")} <ChevronRight size={14}/> <b>{activePage==="workbench"?t("Recognition Workbench","معمل التعرف"):t("Overview","نظرة عامة")}</b></div></div><div className="topbar-right"><div className="local-chip"><ShieldCheck size={14}/> {t("LOCAL NETWORK","شبكة محلية")} <i/></div><button className="icon-button" onClick={refresh} title={t("Refresh","تحديث")}><RefreshCw size={17}/></button><button className="icon-button" onClick={()=>setTheme(v=>v==="dark"?"light":"dark")} title={t("Toggle theme","تغيير المظهر")}>{theme==="dark"?<Sun size={17}/>:<Moon size={17}/>}</button><button className="language-toggle" onClick={()=>setLang(v=>v==="en"?"ar":"en")} title={t("Switch language","تغيير اللغة")}><Languages size={15}/>{lang==="en"?"العربية":"English"}</button><button className="icon-button" onClick={()=>setToast(t("No new alerts.","لا توجد تنبيهات جديدة."))} title={t("Notifications","التنبيهات")}><Bell size={17}/></button><div className="avatar">RG</div></div></header>
 
       <div className="content">
+        {activePage==="workbench" ? <RecognitionWorkbench lang={lang} onToast={setToast} /> : <>
         <section className="hero"><div className="hero-copy"><div className="overline"><span/> {t("INDUSTRIAL METER INTELLIGENCE","ذكاء قراءة العدادات الصناعية")} <span className="overline-line"/></div><h1>{t("Meter Operations","تشغيل العدادات")}<span>.</span><br/><em>{t("At a glance.","كل شيء أمامك.")}</em></h1><p>{t("Real-time visibility across your meter network. Capture, analyze and monitor every station from one local control plane.","تابع شبكة العدادات لحظيًا، والتقط الصور وحلل القراءات وراقب كل محطة من لوحة تحكم محلية واحدة.")}</p><div className="hero-actions"><button className="btn-primary hero-trigger" onClick={triggerAll} disabled={batchBusy || !apiOnline}><Zap size={16} fill="currentColor"/>{batchBusy?t("PROCESSING ALL STATIONS","جارٍ تحليل كل المحطات"):t("TRIGGER ALL STATIONS","تشغيل قراءة كل المحطات")}</button><span className="hero-caption"><Wifi size={14}/> {t("PRIVATE LAN","شبكة محلية خاصة")} <b>•</b> {t("NO CLOUD","بدون اتصال سحابي")}</span></div></div><div className="hero-visual"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="hero-core"><Droplets size={35}/><span>EDGE<br/>VISION</span></div><div className="orbit-node node-a"><Radio size={15}/></div><div className="orbit-node node-b"><Gauge size={15}/></div><div className="orbit-node node-c"><Cpu size={15}/></div><div className="hero-visual-label">8 {t("STATIONS","محطات")} <b>·</b> 1 {t("CONTROL PLANE","لوحة تحكم")}</div></div><div className="hero-index">01 <span>/ 08</span></div></section>
 
         {data.mode === "demo_shared_stream" && <div className="demo-mode-banner"><div className="demo-mode-icon"><Radio size={17}/></div><div><strong>{t("SHARED CAMERA DEMO MODE","وضع تجربة كاميرا واحدة")}</strong><span>{t("All 8 meter channels display the live feed from ESP32-CAM · 192.168.137.201. Each channel keeps its own meter ID and calibration. Add the other cameras later by changing their stream URLs only.","كل قنوات العدادات الثمانية تعرض بث كاميرا ESP32 واحدة · 192.168.137.201. لكل قناة رقم عداد ومعايرة مستقلة. عند إضافة باقي الكاميرات سنغير روابط البث فقط.")}</span></div><a href="http://192.168.137.201/" target="_blank" rel="noreferrer">{t("CAMERA STATUS","حالة الكاميرا")} ↗</a></div>}
@@ -139,7 +143,8 @@ export default function App() {
 
         <section className="camera-grid">{channels.map(camera=><CameraCard key={camera.id} camera={camera} frameTick={frameTick} frameSourceId={data.mode === "demo_shared_stream" ? "cam_01" : camera.id} busy={busy[camera.id] || batchBusy} onTrigger={trigger} onConfigure={setSelected} lang={lang}/>)}</section>
         {channels.length===0 && <div className="empty-state">{t("No stations match your search.","لا توجد محطات تطابق البحث.")}</div>}
-        <footer className="page-footer"><span>WATERMETERVISION <b>·</b> {t("LOCAL-FIRST EDGE PLATFORM","منصة معالجة محلية")}</span><span><span className={apiOnline?"pulse-dot":"pulse-dot danger"}/> {apiOnline?t("API CONNECTED","الخادم متصل"):t("WAITING FOR API","في انتظار الخادم")} <b>·</b> {t("EXPERIMENTAL CV OUTPUT","نتائج رؤية حاسوبية تجريبية")}</span></footer>
+        <footer className="page-footer"><span>RAGURA <b>·</b> {t("LOCAL-FIRST EDGE PLATFORM","منصة معالجة محلية")}</span><span><span className={apiOnline?"pulse-dot":"pulse-dot danger"}/> {apiOnline?t("API CONNECTED","الخادم متصل"):t("WAITING FOR API","في انتظار الخادم")} <b>·</b> {t("EXPERIMENTAL CV OUTPUT","نتائج رؤية حاسوبية تجريبية")}</span></footer>
+        </>}
       </div>
     </main>
     {selected && <CalibrationDrawer camera={selected} onClose={()=>setSelected(null)} onSave={saveCalibration} lang={lang}/>}
