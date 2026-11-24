@@ -1,6 +1,6 @@
-# AI-on-the-edge-device models on the RAGURA PC
+# AI-on-the-edge-device models on the RAGURA WM WM PC
 
-RAGURA can run the pretrained TensorFlow Lite meter models from the official
+RAGURA WM can run the pretrained TensorFlow Lite meter models from the official
 [jomjol/AI-on-the-edge-device](https://github.com/jomjol/AI-on-the-edge-device)
 repository on the PC. ESP32-CAM devices remain HTTP/MJPEG cameras only.
 
@@ -19,7 +19,7 @@ model's own tensor metadata.
 
 ## Install once (requires internet for setup)
 
-From the RAGURA repository root in PowerShell:
+From the RAGURA WM repository root in PowerShell:
 
 ```powershell
 .venv\Scripts\Activate.ps1
@@ -32,7 +32,7 @@ does not need internet access.
 
 ## Important calibration requirement
 
-The existing RAGURA profile provides a broad integer-register rectangle and four
+The existing RAGURA WM profile provides a broad integer-register rectangle and four
 dial centers/radii. The PC adapter divides the register rectangle into the
 configured number of equal-width digit crops and uses square crops around each
 dial. This is a starting geometry, not a claim that every meter uses equal digit
