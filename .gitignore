@@ -26,3 +26,6 @@ data/meter_calibrations.json
 
 # Per-meter captured alignment references (local data)
 data/alignment_references/
+
+# Local RAGURA reading history database
+data/ragura_readings.sqlite3
