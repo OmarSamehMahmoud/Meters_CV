@@ -288,7 +288,7 @@ def analyze_ai_edge(
         "fractional_dials": analog_results,
         "fractional_estimate_m3": round(fractional, 6) if analog_results else None,
         "candidate_reading_m3": candidate,
-        "ocr_confidence": mean_confidence,
+        "digit_model_confidence": mean_confidence,
         "frame_size": [width, height],
         "captured_at": __import__("time").strftime("%Y-%m-%d %H:%M:%S"),
         "alignment": alignment or {"status": "not_configured"},
