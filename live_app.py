@@ -234,7 +234,7 @@ with st.sidebar:
 st.markdown("""
 <div class="wm-hero">
   <div class="wm-eyebrow">INDUSTRIAL METER INTELLIGENCE · LOCAL EDGE SYSTEM</div>
-  <div class="wm-title">WATERMETERVISION <span style="color:#55d6be">/ CONTROL CENTER</span></div>
+  <div class="wm-title">RAGURA WM <span style="color:#55d6be">/ CONTROL CENTER</span></div>
   <div class="wm-sub">Eight independent meter stations · live MJPEG monitoring · on-demand computer vision · local HTTP transport</div>
 </div>
 """, unsafe_allow_html=True)
@@ -394,7 +394,7 @@ camera_wall()
 st.markdown("---")
 st.markdown(
     '<div style="color:#7f95ad;font-size:11px;text-align:center">'
-    'WATERMETERVISION · LOCAL-FIRST ARCHITECTURE · EXPERIMENTAL CV OUTPUT · NOT FOR BILLING'
+    'RAGURA WM · LOCAL-FIRST ARCHITECTURE · EXPERIMENTAL CV OUTPUT · NOT FOR BILLING'
     '</div>',
     unsafe_allow_html=True,
 )
