@@ -118,14 +118,14 @@ export default function App() {
 
   return <div className="app-shell" data-theme={theme} dir={lang === "ar" ? "rtl" : "ltr"}>
     <aside className={`sidebar ${navOpen?"nav-open":""}`}>
-      <div className="brand"><div className="brand-mark"><Droplets size={22}/></div><div><b>RAGURA<span>™</span></b><small>INTELLIGENT METER PLATFORM</small></div><button className="mobile-close" onClick={()=>setNavOpen(false)}><X size={18}/></button></div>
+      <div className="brand"><div className="brand-mark"><Droplets size={22}/></div><div><b>RAGURA WM<span>™</span></b><small>WATER METER INTELLIGENCE</small></div><button className="mobile-close" onClick={()=>setNavOpen(false)}><X size={18}/></button></div>
       <div className="workspace-label">{t("WORKSPACE","مساحة العمل")}</div>
       <button className={`nav-item ${activePage==="overview"?"active":""}`} onClick={()=>setActivePage("overview")}><LayoutDashboard size={17}/> {t("Overview","نظرة عامة")} <span className="nav-count">08</span></button>
       <button className={`nav-item ${activePage==="workbench"?"active":""}`} onClick={()=>{setActivePage("workbench");setNavOpen(false)}}><Aperture size={17}/> {t("Recognition Workbench","معمل التعرف")}</button>
       <button className="nav-item" onClick={()=>setToast(t("Station history will be enabled with persistent storage.","سيتم تفعيل سجل المحطات عند إضافة التخزين الدائم."))}><Clock3 size={17}/> {t("Reading History","سجل القراءات")}</button>
       <button className="nav-item" onClick={()=>setToast(t("Network configuration is managed in configs/camera_channels.json.","إعدادات الشبكة موجودة في configs/camera_channels.json."))}><Radio size={17}/> {t("Camera Network","شبكة الكاميرات")}</button>
       <button className="nav-item" onClick={()=>setToast(t("System settings are available in the backend configuration.","إعدادات النظام متاحة في إعدادات الخادم."))}><Settings2 size={17}/> {t("System Settings","إعدادات النظام")}</button>
-      <div className="sidebar-bottom"><div className="edge-status"><span className={apiOnline?"pulse-dot":"pulse-dot danger"}/><div><b>{apiOnline?t("EDGE NODE ONLINE","وحدة المعالجة متصلة"):t("API DISCONNECTED","الخادم غير متصل")}</b><small>{t("LOCAL PROCESSING NODE","وحدة معالجة محلية")}</small></div></div><div className="sidebar-foot">{t("RAGURA CONSOLE","وحدة تحكم RAGURA")} <span>v1.0.0</span></div></div>
+      <div className="sidebar-bottom"><div className="edge-status"><span className={apiOnline?"pulse-dot":"pulse-dot danger"}/><div><b>{apiOnline?t("EDGE NODE ONLINE","وحدة المعالجة متصلة"):t("API DISCONNECTED","الخادم غير متصل")}</b><small>{t("LOCAL PROCESSING NODE","وحدة معالجة محلية")}</small></div></div><div className="sidebar-foot">{t("RAGURA WM CONSOLE","وحدة تحكم RAGURA WM")} <span>v1.0.0</span></div></div>
     </aside>
 
     <main className="main-area">
@@ -143,7 +143,7 @@ export default function App() {
 
         <section className="camera-grid">{channels.map(camera=><CameraCard key={camera.id} camera={camera} frameTick={frameTick} frameSourceId={data.mode === "demo_shared_stream" ? "cam_01" : camera.id} busy={busy[camera.id] || batchBusy} onTrigger={trigger} onConfigure={setSelected} lang={lang}/>)}</section>
         {channels.length===0 && <div className="empty-state">{t("No stations match your search.","لا توجد محطات تطابق البحث.")}</div>}
-        <footer className="page-footer"><span>RAGURA <b>·</b> {t("LOCAL-FIRST EDGE PLATFORM","منصة معالجة محلية")}</span><span><span className={apiOnline?"pulse-dot":"pulse-dot danger"}/> {apiOnline?t("API CONNECTED","الخادم متصل"):t("WAITING FOR API","في انتظار الخادم")} <b>·</b> {t("EXPERIMENTAL CV OUTPUT","نتائج رؤية حاسوبية تجريبية")}</span></footer>
+        <footer className="page-footer"><span>RAGURA WM <b>·</b> {t("LOCAL-FIRST EDGE PLATFORM","منصة معالجة محلية")}</span><span><span className={apiOnline?"pulse-dot":"pulse-dot danger"}/> {apiOnline?t("API CONNECTED","الخادم متصل"):t("WAITING FOR API","في انتظار الخادم")} <b>·</b> {t("EXPERIMENTAL CV OUTPUT","نتائج رؤية حاسوبية تجريبية")}</span></footer>
         </>}
       </div>
     </main>
