@@ -1,4 +1,4 @@
-# AI-on-the-edge-device models on the RAGURA WM WM PC
+# AI-on-the-edge-device models on the RAGURA WM PC
 
 RAGURA WM can run the pretrained TensorFlow Lite meter models from the official
 [jomjol/AI-on-the-edge-device](https://github.com/jomjol/AI-on-the-edge-device)
