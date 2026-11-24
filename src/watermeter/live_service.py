@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,7 +20,8 @@ PRESETS = json.loads((ROOT / "configs" / "reference_presets.json").read_text(enc
 WEIGHTS = {"x0.1": 0.1, "x0.01": 0.01, "x0.001": 0.001, "x0.0001": 0.0001}
 CALIBRATION_PATH = ROOT / "data" / "meter_calibrations.json"
 ALIGNMENT_DIR = ROOT / "data" / "alignment_references"
-ORB_FEATURES = 1800"
+ORB_FEATURES = 1800
+HISTORY_DB = ROOT / "data" / "ragura_readings.sqlite3"
 OCR_LOCK = threading.Lock()
 _reader = None
 _reader_lock = threading.Lock()
@@ -88,9 +90,15 @@ def detect_pointer(image, dial):
     idx = int(np.argmax((xs - cx) ** 2 + (ys - cy) ** 2))
     tx, ty = int(xs[idx]), int(ys[idx])
     angle = (math.degrees(math.atan2(ty - cy, tx - cx)) + 90.0) % 360.0
+    zero_angle = float(dial.get("zero_angle_degrees", 0.0)) % 360.0
+    direction = str(dial.get("direction", "clockwise")).lower()
+    relative = ((angle - zero_angle) if direction != "counterclockwise"
+                else (zero_angle - angle)) % 360.0
     confidence = 0.82 if ratio <= 0.15 else (0.48 if ratio <= 0.24 else 0.25)
-    return {"name": dial["name"], "value": round(angle / 36.0, 3),
+    return {"name": dial["name"], "value": round(min(9.999, relative / 36.0), 3),
             "confidence": confidence, "angle_degrees": round(angle, 2),
+            "relative_angle_degrees": round(relative, 2),
+            "zero_angle_degrees": round(zero_angle, 2), "direction": direction,
             "tip": [tx, ty], "center": [cx, cy],
             "status": "Experimental estimate" if confidence >= 0.7 else "Needs manual review"}
 
@@ -188,6 +196,7 @@ class LiveMeterService:
         self.results = {}
         self.alignment_references = {}
         self.lock = threading.RLock()
+        self._init_history_db()
         for ch in self.channels:
             url = ch["stream_url"].strip()
             if url and url not in self.cameras:
@@ -210,6 +219,81 @@ class LiveMeterService:
                             self.calibrations[channel_id] = ([float(v) for v in roi], dials)
             except (OSError, ValueError, TypeError):
                 pass
+
+
+    def _connect_history(self):
+        HISTORY_DB.parent.mkdir(parents=True, exist_ok=True)
+        connection = sqlite3.connect(str(HISTORY_DB), timeout=10)
+        connection.row_factory = sqlite3.Row
+        return connection
+
+    def _init_history_db(self):
+        with self._connect_history() as db:
+            db.execute("""CREATE TABLE IF NOT EXISTS readings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel_id TEXT NOT NULL,
+                reading_m3 REAL NOT NULL,
+                captured_at TEXT NOT NULL,
+                status TEXT NOT NULL,
+                validation_json TEXT NOT NULL,
+                reviewed_at TEXT
+            )""")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_readings_channel_status ON readings(channel_id, status, id)")
+
+    def _record_candidate(self, channel_id, reading, captured_at):
+        with self._connect_history() as db:
+            previous = db.execute(
+                "SELECT reading_m3, captured_at FROM readings WHERE channel_id=? AND status='accepted' ORDER BY id DESC LIMIT 1",
+                (channel_id,)).fetchone()
+            checks = []
+            if previous is None:
+                checks.append({"code": "baseline_missing", "passed": False,
+                               "message": "No accepted baseline exists; verify the first reading manually."})
+            elif float(reading) < float(previous["reading_m3"]):
+                checks.append({"code": "counter_decreased", "passed": False,
+                               "message": "Candidate is lower than the last accepted reading."})
+            else:
+                checks.append({"code": "monotonic_counter", "passed": True,
+                               "message": "Candidate is not lower than the last accepted reading."})
+            validation = {"status": "needs_review" if not all(x["passed"] for x in checks) else "pending_review",
+                          "checks": checks,
+                          "previous_accepted_m3": float(previous["reading_m3"]) if previous else None,
+                          "automatic_acceptance": False}
+            cursor = db.execute(
+                "INSERT INTO readings(channel_id,reading_m3,captured_at,status,validation_json) VALUES(?,?,?,?,?)",
+                (channel_id, float(reading), captured_at, "pending_review", json.dumps(validation)))
+            return {"record_id": cursor.lastrowid, **validation}
+
+    def accept_reading(self, channel_id, record_id):
+        with self._connect_history() as db:
+            row = db.execute("SELECT * FROM readings WHERE id=? AND channel_id=?",
+                             (int(record_id), channel_id)).fetchone()
+            if row is None:
+                raise KeyError(record_id)
+            if row["status"] == "accepted":
+                return {"record_id": int(record_id), "status": "accepted", "already_accepted": True}
+            previous = db.execute(
+                "SELECT reading_m3 FROM readings WHERE channel_id=? AND status='accepted' ORDER BY id DESC LIMIT 1",
+                (channel_id,)).fetchone()
+            if previous and float(row["reading_m3"]) < float(previous["reading_m3"]):
+                raise ValueError("Cannot accept a lower counter value without an explicit meter-reset workflow.")
+            db.execute("UPDATE readings SET status='accepted', reviewed_at=? WHERE id=?",
+                       (time.strftime("%Y-%m-%d %H:%M:%S"), int(record_id)))
+            return {"record_id": int(record_id), "status": "accepted",
+                    "reading_m3": float(row["reading_m3"])}
+
+    def reading_history(self, channel_id, limit=50):
+        if channel_id not in self.calibrations:
+            raise KeyError(channel_id)
+        with self._connect_history() as db:
+            rows = db.execute(
+                "SELECT id,reading_m3,captured_at,status,validation_json,reviewed_at FROM readings WHERE channel_id=? ORDER BY id DESC LIMIT ?",
+                (channel_id, max(1, min(int(limit), 200)))).fetchall()
+        return {"channel_id": channel_id, "readings": [
+            {"record_id": int(row["id"]), "reading_m3": float(row["reading_m3"]),
+             "captured_at": row["captured_at"], "status": row["status"],
+             "validation": json.loads(row["validation_json"]),
+             "reviewed_at": row["reviewed_at"]} for row in rows]}
 
     def _persist_calibrations(self):
         CALIBRATION_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -338,6 +422,10 @@ class LiveMeterService:
             result["status"] = "alignment_failed"
             result["candidate_reading_m3"] = None
             result["warning"] = "Reading suppressed because image alignment failed. " + alignment["message"]
+        if result.get("candidate_reading_m3") is not None and alignment["status"] != "failed":
+            result["validation"] = self._record_candidate(
+                channel_id, result["candidate_reading_m3"], result["captured_at"])
+            result["status"] = result["validation"]["status"]
         with self.lock:
             self.results[channel_id] = result
         return result
@@ -367,6 +455,10 @@ class LiveMeterService:
                     result["status"] = "alignment_failed"
                     result["candidate_reading_m3"] = None
                     result["warning"] = "Reading suppressed because image alignment failed. " + alignment["message"]
+                elif result.get("candidate_reading_m3") is not None:
+                    result["validation"] = self._record_candidate(
+                        cid, result["candidate_reading_m3"], result["captured_at"])
+                    result["status"] = result["validation"]["status"]
                 return result, annotated
             futures = {pool.submit(run_job, cid, f, r, d, ref): cid for cid, f, r, d, ref in jobs}
             for future in as_completed(futures):
