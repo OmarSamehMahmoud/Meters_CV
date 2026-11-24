@@ -1,6 +1,6 @@
-# RAGURA — Intelligent Meter Reading Platform
+# RAGURA WM — Intelligent Meter Reading Platform
 
-**RAGURA by PhotonX** is an offline-first, PC-based meter-reading platform. ESP32-CAM devices provide local HTTP/MJPEG video streams; the PC handles image processing, calibration, recognition and review through a React + FastAPI application.
+**RAGURA WM by PhotonX** is an offline-first, PC-based meter-reading platform. ESP32-CAM devices provide local HTTP/MJPEG video streams; the PC handles image processing, calibration, recognition and review through a React + FastAPI application.
 
 ## Current architecture
 
@@ -76,5 +76,5 @@ The PC inference adapter uses the upstream AI-on-the-edge-device pretrained TFLi
 
 ## Brand
 
-**RAGURA** · **PhotonX**  
+**RAGURA WM** · **PhotonX**  
 Copyright © 2026 — PhotonX
