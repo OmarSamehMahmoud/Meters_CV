@@ -19,11 +19,11 @@ Open the **Recognition Workbench** from the left navigation to:
 3. Adjust normalized digit ROI coordinates.
 4. Select each analog dial and adjust its center and radius.
 5. Save calibration locally; it survives backend restarts.
-6. Trigger the existing recognition pipeline and inspect the candidate value, OCR confidence and warning.
+6. Save the current camera frame as a per-meter geometric reference.\n7. Trigger recognition; when a reference exists, ORB feature matching and RANSAC estimate a similarity transform and warp the live frame into reference coordinates before ROI extraction.\n8. Inspect alignment match/inlier metrics and the candidate value, OCR confidence and warning.
 
 ### Important implementation status
 
-The current recognition output is experimental. Digit recognition uses EasyOCR; analog pointer estimation uses red-pixel segmentation and configured dial geometry. **Automatic reference-image alignment, trained meter-specific digit/pointer models, robust reading correction/rollover logic and persistent reading history are not implemented yet.** The workbench labels this status explicitly. Do not use current candidate values for billing or operational decisions without a verified dataset and end-to-end validation.
+The current recognition output is experimental. Digit recognition uses EasyOCR; analog pointer estimation uses red-pixel segmentation and configured dial geometry. **Reference-frame alignment is now implemented** using ORB descriptors, ratio-filtered feature matches, RANSAC similarity-transform estimation and perspective-safe affine warping. It requires a saved reference frame for each meter; if alignment fails, the candidate reading is suppressed. Trained meter-specific digit/pointer models, robust reading correction/rollover logic and persistent reading history are not implemented yet. The workbench labels this status explicitly. Do not use current candidate values for billing or operational decisions without a verified dataset and end-to-end validation.
 
 ## Offline camera network
 
