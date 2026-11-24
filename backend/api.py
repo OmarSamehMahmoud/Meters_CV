@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from src.watermeter.live_service import service
 from src.watermeter.ai_edge_pc import models_status
 
-app = FastAPI(title="RAGURA API", version="1.2.0")
+app = FastAPI(title="RAGURA WM API", version="1.2.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
@@ -24,7 +24,7 @@ class TriggerAllPayload(BaseModel):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "RAGURA"}
+    return {"status": "ok", "service": "RAGURA WM"}
 
 
 @app.get("/api/recognition/models")
