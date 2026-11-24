@@ -21,7 +21,7 @@ WEIGHTS = {"x0.1": 0.1, "x0.01": 0.01, "x0.001": 0.001, "x0.0001": 0.0001}
 OCR_LOCK = threading.Lock()
 
 st.set_page_config(
-    page_title="WaterMeterVision | 8-Camera Control",
+    page_title="RAGURA WM | 8-Camera Control",
     page_icon="💧",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -214,7 +214,7 @@ for channel in CHANNELS:
         camera_by_url[url] = get_camera(url)
 
 with st.sidebar:
-    st.markdown("## 💧 WaterMeterVision")
+    st.markdown("## 💧 RAGURA WM")
     st.caption("8-channel local meter monitoring")
     st.markdown("---")
     st.markdown("### Network architecture")
