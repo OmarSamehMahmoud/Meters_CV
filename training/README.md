@@ -39,3 +39,19 @@ The ONNX model is not yet an ESP32 binary. TFLite Micro conversion and board ben
 - If using explicit `split` labels, every row must be labeled `train`, `val`, or `test`; all three partitions must be non-empty and meter-disjoint.
 - Reported test accuracy is only meaningful when the test meters were not used for training, tuning, or augmentation.
 - No model weights are included in the repository. A real checkpoint is produced only after training on verified, labeled meter images.
+
+
+## Audit before training
+
+Run the dataset quality gate before starting a training job:
+
+```powershell
+python training/audit_dataset.py --csv data/labels/digit_labels.csv --profile configs/meter_profile.example.json --root . --out reports/dataset_audit
+```
+
+The audit checks required columns, unique image paths, integer labels (0–9), readable source images, normalized register ROI, and meter-disjoint train/validation/test splits. It writes:
+
+- `reports/dataset_audit/dataset_audit.json` — machine-readable pass/fail report and warnings.
+- `reports/dataset_audit/digit_crop_contact_sheet.jpg` — five ordered crop previews per labeled image, with the ground-truth label.
+
+Review the contact sheet manually before training. It is intended to expose bad framing, incorrect ROI coordinates, clipped digits and unequal wheel spacing. A passing audit checks data structure and image availability; it does **not** prove label correctness, recognition accuracy, or suitability for billing. Do not train if the audit fails.
