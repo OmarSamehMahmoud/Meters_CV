@@ -1,19 +1,44 @@
-# WaterMeterVision
+# RAGURA — Intelligent Meter Reading Platform
 
-PC-first computer-vision system for reading a fixed family of mechanical water meters, targeting **AI Thinker ESP32-CAM + OV2640**.
+**RAGURA by PhotonX** is an offline-first, PC-based meter-reading platform. ESP32-CAM devices provide local HTTP/MJPEG video streams; the PC handles image processing, calibration, recognition and review through a React + FastAPI application.
 
-## 8-camera offline streaming setup
+## Current architecture
 
-The recommended deployment uses the laptop's Windows Mobile Hotspot as one private local Wi-Fi network (internet is not required). All eight ESP32-CAM devices join this network with unique static IPs and expose independent MJPEG streams. The PC runs React, FastAPI, OpenCV and OCR; the ESP32-CAM devices only capture and stream video.
+- **Camera layer:** ESP32-CAM over a private local Wi-Fi network; HTTP/MJPEG only.
+- **Processing layer:** Python, FastAPI and OpenCV on the PC.
+- **Operator interface:** React + Vite dashboard.
+- **Recognition currently implemented:** EasyOCR for the digit register plus experimental red-pixel pointer estimation for the four analog dials.
+- **Storage:** Per-channel ROI and dial calibration is persisted locally in `data/meter_calibrations.json`.
+- **Connectivity:** No cloud, MQTT or internet dependency is required for the local workflow.
+
+## Recognition Workbench
+
+Open the **Recognition Workbench** from the left navigation to:
+1. Select a meter channel.
+2. Inspect its current camera frame with the configured digit-register and analog-dial regions overlaid.
+3. Adjust normalized digit ROI coordinates.
+4. Select each analog dial and adjust its center and radius.
+5. Save calibration locally; it survives backend restarts.
+6. Trigger the existing recognition pipeline and inspect the candidate value, OCR confidence and warning.
+
+### Important implementation status
+
+The current recognition output is experimental. Digit recognition uses EasyOCR; analog pointer estimation uses red-pixel segmentation and configured dial geometry. **Automatic reference-image alignment, trained meter-specific digit/pointer models, robust reading correction/rollover logic and persistent reading history are not implemented yet.** The workbench labels this status explicitly. Do not use current candidate values for billing or operational decisions without a verified dataset and end-to-end validation.
+
+## Offline camera network
+
+The recommended deployment uses the laptop's Windows Mobile Hotspot as one private local Wi-Fi network. Each ESP32-CAM joins the network and exposes an independent MJPEG stream. The PC performs all recognition; cameras only capture and stream video.
 
 - Firmware: [esp32_cam/WaterMeterVision_HTTP_Stream](esp32_cam/WaterMeterVision_HTTP_Stream/WaterMeterVision_HTTP_Stream.ino)
-- Eight-camera IP/URL configuration: [configs/camera_channels.json](configs/camera_channels.json)
-- Network setup and flashing guide: [docs/eight_camera_local_http_architecture.md](docs/eight_camera_local_http_architecture.md)
+- Camera IP/URL configuration: [configs/camera_channels.json](configs/camera_channels.json)
+- Network setup: [docs/eight_camera_local_http_architecture.md](docs/eight_camera_local_http_architecture.md)
 - React dashboard setup: [docs/react_control_center.md](docs/react_control_center.md)
 
-Example IPs are `192.168.137.201`–`192.168.137.208`; confirm the laptop hotspot gateway/subnet with `ipconfig` and check that these addresses are unused before flashing.
+Example IPs are `192.168.137.201`–`192.168.137.208`; confirm the laptop hotspot gateway/subnet with `ipconfig` and check that addresses are unused before assigning them.
 
-## React control center
+**Current bench setup:** the dashboard supports eight logical meter channels. When configured in shared-stream demo mode, those channels display the same physical ESP32-CAM feed while retaining separate meter IDs and calibration. This is not equivalent to eight independent cameras.
+
+## Run locally (Windows PowerShell)
 
 Backend:
 ```powershell
@@ -29,8 +54,13 @@ npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`. The eight camera cards show independent streams and expose their direct stream links. The backend loads camera URLs from `configs/camera_channels.json` at startup; restart it after changing the configuration.
+Open `http://127.0.0.1:5173`.
 
-## Important accuracy note
+## Reference and implementation boundary
 
-The current OCR and rotary-dial estimates are experimental. Dial zero-angle calibration, rollover logic and end-to-end accuracy are not validated. Do not use these readings for billing without a verified dataset and full system validation.
+The product workflow takes inspiration from established analog-meter digitization patterns such as image capture, geometric calibration, region extraction, recognition and reading validation. RAGURA's implementation is developed independently; no third-party source code or model weights are bundled from those projects.
+
+## Brand
+
+**RAGURA** · **PhotonX**  
+Copyright © 2026 — PhotonX
