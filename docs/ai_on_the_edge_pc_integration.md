@@ -6,7 +6,7 @@ repository on the PC. ESP32-CAM devices remain HTTP/MJPEG cameras only.
 
 ## What is integrated
 
-- Digit model: `dig-class11_1900_s2_q.tflite` (11 output classes, including the unknown class).
+- Digit model: `dig-cont_0900_s3_q.tflite` (100 output classes representing 0.0–9.9 wheel positions).
 - Analog model: `ana-cont_1500_s2_q.tflite` (two outputs interpreted as a pointer phase).
 - Release pin: `v16.1.0`.
 - Runtime: Google AI Edge LiteRT Python interpreter.
