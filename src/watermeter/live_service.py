@@ -18,6 +18,8 @@ CHANNELS = json.loads((ROOT / "configs" / "camera_channels.json").read_text(enco
 PRESETS = json.loads((ROOT / "configs" / "reference_presets.json").read_text(encoding="utf-8"))["reference_presets"]
 WEIGHTS = {"x0.1": 0.1, "x0.01": 0.01, "x0.001": 0.001, "x0.0001": 0.0001}
 CALIBRATION_PATH = ROOT / "data" / "meter_calibrations.json"
+ALIGNMENT_DIR = ROOT / "data" / "alignment_references"
+ORB_FEATURES = 1800"
 OCR_LOCK = threading.Lock()
 _reader = None
 _reader_lock = threading.Lock()
@@ -110,7 +112,49 @@ def draw_overlay(image, roi, dials, pointer_results=None):
     return out
 
 
-def analyze(frame, roi, dials, channel_id):
+
+def align_to_reference(frame, reference):
+    """Align a live frame to its saved reference using ORB features and RANSAC."""
+    if frame is None or reference is None:
+        return frame, {"status": "not_configured", "matches": 0, "inliers": 0,
+                       "inlier_ratio": 0.0, "message": "No reference frame configured."}
+    ref_h, ref_w = reference.shape[:2]
+    gray_ref = cv2.cvtColor(reference, cv2.COLOR_BGR2GRAY)
+    gray_live = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    orb = cv2.ORB_create(nfeatures=ORB_FEATURES, scaleFactor=1.2, nlevels=8,
+                         edgeThreshold=19, fastThreshold=12)
+    kp_ref, des_ref = orb.detectAndCompute(gray_ref, None)
+    kp_live, des_live = orb.detectAndCompute(gray_live, None)
+    if des_ref is None or des_live is None or len(kp_ref) < 8 or len(kp_live) < 8:
+        return frame, {"status": "failed", "matches": 0, "inliers": 0,
+                       "inlier_ratio": 0.0, "message": "Not enough visual features; improve focus or lighting."}
+    matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
+    pairs = matcher.knnMatch(des_live, des_ref, k=2)
+    good = [pair[0] for pair in pairs if len(pair) == 2 and pair[0].distance < 0.75 * pair[1].distance]
+    if len(good) < 12:
+        return frame, {"status": "failed", "matches": len(good), "inliers": 0,
+                       "inlier_ratio": 0.0, "message": "Too few reliable feature matches."}
+    src = np.float32([kp_live[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
+    dst = np.float32([kp_ref[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
+    matrix, mask = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC,
+        ransacReprojThreshold=4.0, maxIters=2500, confidence=0.99, refineIters=10)
+    inliers = int(mask.sum()) if mask is not None else 0
+    ratio = inliers / max(1, len(good))
+    if matrix is None or inliers < 8 or ratio < 0.25:
+        return frame, {"status": "failed", "matches": len(good), "inliers": inliers,
+                       "inlier_ratio": round(ratio, 3),
+                       "message": "Reference alignment is unstable; check camera position and reference image."}
+    aligned = cv2.warpAffine(frame, matrix, (ref_w, ref_h), flags=cv2.INTER_LINEAR,
+                             borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
+    scale = float(math.sqrt(matrix[0, 0] ** 2 + matrix[1, 0] ** 2))
+    rotation = float(math.degrees(math.atan2(matrix[1, 0], matrix[0, 0])))
+    return aligned, {"status": "aligned", "matches": len(good), "inliers": inliers,
+                     "inlier_ratio": round(ratio, 3), "scale": round(scale, 4),
+                     "rotation_degrees": round(rotation, 2),
+                     "message": "Live frame aligned to the saved reference."}
+
+
+def analyze(frame, roi, dials, channel_id, alignment=None):
     h, w = frame.shape[:2]
     x1, y1, x2, y2 = pixel_roi(roi, w, h)
     if x2 <= x1 or y2 <= y1:
@@ -130,6 +174,7 @@ def analyze(frame, roi, dials, channel_id):
         "ocr_confidence": round(float(np.mean([x[2] for x in ocr])) if ocr else 0.0, 4),
         "ocr_raw": [{"text": x[1], "confidence": round(x[2], 4)} for x in ocr],
         "frame_size": [w, h], "captured_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "alignment": alignment or {"status": "not_configured"},
         "warning": "Experimental only. Dial zero-angle calibration and end-to-end accuracy are not validated; do not use for billing."
     }
     return result, draw_overlay(frame, roi, dials, pointers)
@@ -141,12 +186,20 @@ class LiveMeterService:
         self.cameras = {}
         self.calibrations = {}
         self.results = {}
+        self.alignment_references = {}
         self.lock = threading.RLock()
         for ch in self.channels:
             url = ch["stream_url"].strip()
             if url and url not in self.cameras:
                 self.cameras[url] = LatestFrameCamera(url)
             self.calibrations[ch["id"]] = channel_geometry(ch)
+        ALIGNMENT_DIR.mkdir(parents=True, exist_ok=True)
+        for ch in self.channels:
+            ref_path = ALIGNMENT_DIR / (ch["id"] + ".jpg")
+            if ref_path.exists():
+                reference = cv2.imread(str(ref_path))
+                if reference is not None:
+                    self.alignment_references[ch["id"]] = reference
         if CALIBRATION_PATH.exists():
             try:
                 saved = json.loads(CALIBRATION_PATH.read_text(encoding="utf-8"))
@@ -166,6 +219,37 @@ class LiveMeterService:
         temporary = CALIBRATION_PATH.with_suffix(".json.tmp")
         temporary.write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
         temporary.replace(CALIBRATION_PATH)
+
+
+    def set_alignment_reference(self, channel_id):
+        if channel_id not in self.calibrations:
+            raise KeyError(channel_id)
+        cam = self.camera_for(channel_id)
+        frame = cam.latest() if cam else None
+        if frame is None:
+            raise RuntimeError("No camera frame available to save as reference.")
+        ALIGNMENT_DIR.mkdir(parents=True, exist_ok=True)
+        path = ALIGNMENT_DIR / (channel_id + ".jpg")
+        ok = cv2.imwrite(str(path), frame, [cv2.IMWRITE_JPEG_QUALITY, 94])
+        if not ok:
+            raise RuntimeError("Could not write the alignment reference image.")
+        reference = cv2.imread(str(path))
+        with self.lock:
+            self.alignment_references[channel_id] = reference
+        return {"channel_id": channel_id, "status": "reference_saved",
+                "reference_size": [int(reference.shape[1]), int(reference.shape[0])],
+                "message": "Reference frame saved locally."}
+
+    def alignment_status(self, channel_id):
+        if channel_id not in self.calibrations:
+            raise KeyError(channel_id)
+        with self.lock:
+            reference = self.alignment_references.get(channel_id)
+            has_reference = reference is not None
+            size = [int(reference.shape[1]), int(reference.shape[0])] if has_reference else None
+        return {"channel_id": channel_id, "configured": has_reference,
+                "reference_size": size,
+                "status": "reference_ready" if has_reference else "not_configured"}
 
     def camera_for(self, channel_id):
         ch = next((c for c in self.channels if c["id"] == channel_id), None)
@@ -228,7 +312,17 @@ class LiveMeterService:
             raise RuntimeError("No frame received from this camera.")
         with self.lock:
             roi, dials = self.calibrations[channel_id]
-        result, annotated = analyze(frame.copy(), roi, dials, channel_id)
+            reference = self.alignment_references.get(channel_id)
+        alignment = {"status": "not_configured", "matches": 0, "inliers": 0,
+                     "inlier_ratio": 0.0, "message": "Save a reference frame to enable automatic alignment."}
+        aligned = frame.copy()
+        if reference is not None:
+            aligned, alignment = align_to_reference(frame.copy(), reference)
+        result, annotated = analyze(aligned, roi, dials, channel_id, alignment)
+        if alignment["status"] == "failed":
+            result["status"] = "alignment_failed"
+            result["candidate_reading_m3"] = None
+            result["warning"] = "Reading suppressed because image alignment failed. " + alignment["message"]
         with self.lock:
             self.results[channel_id] = result
         return result
@@ -241,12 +335,25 @@ class LiveMeterService:
             if frame is not None:
                 with self.lock:
                     roi, dials = self.calibrations[ch["id"]]
-                jobs.append((ch["id"], frame.copy(), roi, dials))
+                    reference = self.alignment_references.get(ch["id"])
+                jobs.append((ch["id"], frame.copy(), roi, dials, reference))
         if not jobs:
             raise RuntimeError("No camera frames are available.")
         outcomes = []
         with ThreadPoolExecutor(max_workers=max(1, min(int(workers), 8))) as pool:
-            futures = {pool.submit(analyze, f, r, d, cid): cid for cid, f, r, d in jobs}
+            def run_job(cid, frame, roi, dials, reference):
+                alignment = {"status": "not_configured", "matches": 0, "inliers": 0,
+                             "inlier_ratio": 0.0, "message": "No reference configured."}
+                aligned = frame
+                if reference is not None:
+                    aligned, alignment = align_to_reference(frame, reference)
+                result, annotated = analyze(aligned, roi, dials, cid, alignment)
+                if alignment["status"] == "failed":
+                    result["status"] = "alignment_failed"
+                    result["candidate_reading_m3"] = None
+                    result["warning"] = "Reading suppressed because image alignment failed. " + alignment["message"]
+                return result, annotated
+            futures = {pool.submit(run_job, cid, f, r, d, ref): cid for cid, f, r, d, ref in jobs}
             for future in as_completed(futures):
                 cid = futures[future]
                 try:
