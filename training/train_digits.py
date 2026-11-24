@@ -71,16 +71,19 @@ def split_frame(df):
     groups = df["meter_id"].fillna("").astype(str) if "meter_id" in df else df["image_path"].astype(str)
     if groups.eq("").any():
         raise ValueError("Every row needs a non-empty meter_id for group-safe splitting.")
-    if groups.nunique() < 3:
-        raise ValueError("Need at least 3 distinct meter_id groups for train/validation/test without meter leakage; more meters are strongly recommended.")
-    train_idx, temp_idx = next(
-        GroupShuffleSplit(n_splits=1, test_size=0.30, random_state=SEED).split(df, groups=groups)
-    )
-    temp = df.iloc[temp_idx]
-    temp_groups = groups.iloc[temp_idx]
-    val_rel, test_rel = next(
-        GroupShuffleSplit(n_splits=1, test_size=0.50, random_state=SEED).split(temp, groups=temp_groups)
-    )
+    if groups.nunique() < 4:
+        raise ValueError("Need at least 4 distinct meter_id groups for automatic train/validation/test splitting; collect more physical meters.")
+    try:
+        train_idx, temp_idx = next(
+            GroupShuffleSplit(n_splits=1, test_size=0.30, random_state=SEED).split(df, groups=groups)
+        )
+        temp = df.iloc[temp_idx]
+        temp_groups = groups.iloc[temp_idx]
+        val_rel, test_rel = next(
+            GroupShuffleSplit(n_splits=1, test_size=0.50, random_state=SEED).split(temp, groups=temp_groups)
+        )
+    except ValueError as exc:
+        raise ValueError("Unable to create three non-empty meter-disjoint splits. Add more distinct physical meters.") from exc
     parts = (df.iloc[train_idx].copy(), temp.iloc[val_rel].copy(), temp.iloc[test_rel].copy())
     owners = [{str(value) for value in part["meter_id"]} for part in parts] if "meter_id" in df else []
     if owners and any(owners[i] & owners[j] for i in range(3) for j in range(i + 1, 3)):
