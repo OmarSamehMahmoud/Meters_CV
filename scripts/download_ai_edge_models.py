@@ -10,7 +10,7 @@ BASE_URL = "https://raw.githubusercontent.com/jomjol/AI-on-the-edge-device/v16.1
 
 # Git blob SHA-1 values from the official v16.1.0 repository tree.
 MODELS = {
-    "dig-class11_1900_s2_q.tflite": "885498fa9d1f35049b3b256360f0fc62d5fc1f55",
+    "dig-cont_0900_s3_q.tflite": "f0d712738e06ac06919804afe776bf1e95554d20",
     "ana-cont_1500_s2_q.tflite": "a50a3093cbf3aea84f7cfc3a6617e8a9568a2873",
 }
 
