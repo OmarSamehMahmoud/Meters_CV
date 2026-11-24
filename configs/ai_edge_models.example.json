@@ -1,0 +1,12 @@
+{
+  "source_repository": "https://github.com/jomjol/AI-on-the-edge-device",
+  "source_release": "v16.1.0",
+  "model_directory": "models/ai-on-the-edge-device/v16.1.0",
+  "digit_model": "dig-class11_1900_s2_q.tflite",
+  "digit_model_outputs": 11,
+  "analog_model": "ana-cont_1500_s2_q.tflite",
+  "analog_model_outputs": 2,
+  "digit_count": 5,
+  "input_preprocessing": "RGB float values in [0,255], resized to model tensor dimensions",
+  "note": "Meter-specific digit and dial ROI geometry must be calibrated per camera channel."
+}
