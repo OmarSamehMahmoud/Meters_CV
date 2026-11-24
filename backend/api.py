@@ -85,6 +85,25 @@ def get_alignment_status(channel_id: str):
         raise HTTPException(status_code=404, detail="Camera channel not found")
 
 
+
+@app.get("/api/cameras/{channel_id}/readings")
+def reading_history(channel_id: str, limit: int = 50):
+    try:
+        return service.reading_history(channel_id, limit)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Camera channel not found")
+
+
+@app.post("/api/cameras/{channel_id}/readings/{record_id}/accept")
+def accept_reading(channel_id: str, record_id: int):
+    try:
+        return service.accept_reading(channel_id, record_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Reading record not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
 @app.post("/api/cameras/{channel_id}/trigger")
 def trigger(channel_id: str):
     try:
