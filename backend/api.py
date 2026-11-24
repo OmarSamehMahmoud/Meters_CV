@@ -39,6 +39,15 @@ def camera_frame(channel_id: str):
     return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
+
+@app.get("/api/cameras/{channel_id}/aligned-frame")
+def aligned_camera_frame(channel_id: str):
+    data = service.aligned_frame_jpeg(channel_id)
+    if data is None:
+        raise HTTPException(status_code=503, detail="No frame available")
+    return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
 @app.get("/api/cameras/{channel_id}/calibration")
 def get_calibration(channel_id: str):
     try:
