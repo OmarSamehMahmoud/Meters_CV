@@ -281,6 +281,21 @@ class LiveMeterService:
         ok, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 82])
         return encoded.tobytes() if ok else None
 
+
+    def aligned_frame_jpeg(self, channel_id):
+        cam = self.camera_for(channel_id)
+        frame = cam.latest() if cam else None
+        if frame is None:
+            return None
+        with self.lock:
+            reference = self.alignment_references.get(channel_id)
+        if reference is not None:
+            aligned, status = align_to_reference(frame, reference)
+            if status["status"] == "aligned":
+                frame = aligned
+        ok, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 82])
+        return encoded.tobytes() if ok else None
+
     def get_calibration(self, channel_id):
         if channel_id not in self.calibrations:
             raise KeyError(channel_id)
