@@ -1,0 +1,88 @@
+{
+  "schema_version": 2,
+  "mode": "demo_shared_stream",
+  "note": "DEMO MODE: all 8 logical meter channels intentionally use the currently connected physical ESP32-CAM at 192.168.137.201. The backend deduplicates this URL and opens only one MJPEG connection. When additional ESP32-CAM devices arrive, update each channel URL to its own IP (.202-.208).",
+  "network": {
+    "type": "laptop_mobile_hotspot",
+    "internet_required": false,
+    "gateway": "192.168.137.1",
+    "subnet": "255.255.255.0",
+    "static_ip_range": "192.168.137.201 (single physical demo camera)",
+    "stream_port": 81,
+    "stream_path": "/stream"
+  },
+  "cameras": [
+    {
+      "id": "cam_01",
+      "name": "CAMERA 01",
+      "meter_id": "METER-001",
+      "ip_label": "192.168.137.201 · shared demo",
+      "stream_url": "http://192.168.137.201:81/stream",
+      "preset": "close_reference_2026_11_12_1533",
+      "enabled": true
+    },
+    {
+      "id": "cam_02",
+      "name": "CAMERA 02",
+      "meter_id": "METER-002",
+      "ip_label": "192.168.137.201 · shared demo",
+      "stream_url": "http://192.168.137.201:81/stream",
+      "preset": "close_reference_2026_11_12_1533",
+      "enabled": true
+    },
+    {
+      "id": "cam_03",
+      "name": "CAMERA 03",
+      "meter_id": "METER-003",
+      "ip_label": "192.168.137.201 · shared demo",
+      "stream_url": "http://192.168.137.201:81/stream",
+      "preset": "close_reference_2026_11_12_1533",
+      "enabled": true
+    },
+    {
+      "id": "cam_04",
+      "name": "CAMERA 04",
+      "meter_id": "METER-004",
+      "ip_label": "192.168.137.201 · shared demo",
+      "stream_url": "http://192.168.137.201:81/stream",
+      "preset": "close_reference_2026_11_12_1533",
+      "enabled": true
+    },
+    {
+      "id": "cam_05",
+      "name": "CAMERA 05",
+      "meter_id": "METER-005",
+      "ip_label": "192.168.137.201 · shared demo",
+      "stream_url": "http://192.168.137.201:81/stream",
+      "preset": "close_reference_2026_11_12_1533",
+      "enabled": true
+    },
+    {
+      "id": "cam_06",
+      "name": "CAMERA 06",
+      "meter_id": "METER-006",
+      "ip_label": "192.168.137.201 · shared demo",
+      "stream_url": "http://192.168.137.201:81/stream",
+      "preset": "close_reference_2026_11_12_1533",
+      "enabled": true
+    },
+    {
+      "id": "cam_07",
+      "name": "CAMERA 07",
+      "meter_id": "METER-007",
+      "ip_label": "192.168.137.201 · shared demo",
+      "stream_url": "http://192.168.137.201:81/stream",
+      "preset": "close_reference_2026_11_12_1533",
+      "enabled": true
+    },
+    {
+      "id": "cam_08",
+      "name": "CAMERA 08",
+      "meter_id": "METER-008",
+      "ip_label": "192.168.137.201 · shared demo",
+      "stream_url": "http://192.168.137.201:81/stream",
+      "preset": "close_reference_2026_11_12_1533",
+      "enabled": true
+    }
+  ]
+}

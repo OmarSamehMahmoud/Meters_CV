@@ -14,8 +14,8 @@ from PIL import Image, ImageOps
 
 PRESETS_PATH = Path("configs/reference_presets.json")
 REFERENCE_DIR = Path("data/reference")
-st.set_page_config(page_title="WaterMeterVision", page_icon="💧", layout="wide")
-st.title("WaterMeterVision")
+st.set_page_config(page_title="RAGURA WM", page_icon="💧", layout="wide")
+st.title("RAGURA WM")
 st.caption("NWM SJ-LFC / SJ-WDC · five-digit register OCR + experimental rotary-pointer detection")
 
 

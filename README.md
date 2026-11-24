@@ -1,165 +1,80 @@
-# WaterMeterVision
+# RAGURA WM — Intelligent Meter Reading Platform
 
-PC-first computer-vision system for reading a fixed family of mechanical water meters, targeting **AI Thinker ESP32-CAM + OV2640**.
+**RAGURA WM by PhotonX** is an offline-first, PC-based meter-reading platform. ESP32-CAM devices provide local HTTP/MJPEG video streams; the PC handles image processing, calibration, recognition and review through a React + FastAPI application.
 
-Repository: https://github.com/OmarSamehMahmoud/Meters_CV
+## Current architecture
 
-## Target meter
+- **Camera layer:** ESP32-CAM over a private local Wi-Fi network; HTTP/MJPEG only.
+- **Processing layer:** Python, FastAPI and OpenCV on the PC.
+- **Operator interface:** React + Vite dashboard.
+- **Recognition:** pretrained TensorFlow Lite digit and analog models from AI-on-the-edge-device v16.1.0, executed locally on the PC through LiteRT. The ESP32-CAM only streams frames.
+- **Storage:** Per-channel ROI and dial calibration is persisted locally in `data/meter_calibrations.json`.
+- **Connectivity:** No cloud, MQTT or internet dependency is required for the local workflow.
 
-The reference meter has five black odometer wheels for the integer m³ register and four red pointer dials for fractional precision. The dial labels/order and pointer rotation convention must be confirmed against a straight-on capture and the meter specification before precision readings are reconstructed.
+## Recognition Workbench
 
-## Standalone ESP32-CAM firmware
+Open the **Recognition Workbench** from the left navigation to:
+1. Select a meter channel.
+2. Inspect its current camera frame with the configured digit-register and analog-dial regions overlaid.
+3. Adjust normalized digit ROI coordinates.
+4. Select each analog dial and adjust its center and radius.
+5. Save calibration locally; it survives backend restarts.
+6. Save the current camera frame as a per-meter geometric reference.
+7. Trigger recognition; when a reference exists, ORB feature matching and RANSAC estimate a similarity transform and warp the live frame into reference coordinates before ROI extraction.
+8. Inspect alignment match/inlier metrics and the candidate value, digit-model confidence and warning.
 
-The embedded implementation is maintained separately under [`esp32_cam/`](esp32_cam/README.md). It targets AI Thinker ESP32-CAM + OV2640 and is designed for local on-device processing with Serial Monitor diagnostics only: no Python, Streamlit, web server or cloud at runtime. The firmware currently includes camera capture, JPEG-to-RGB conversion and an experimental red-pointer angle detector. Digit-model deployment and physical meter calibration are still pending; do not treat the current firmware as a validated meter reader.
+### Important implementation status
 
-## Current repository contents
+The live trigger now routes through the original pretrained AI-on-the-edge-device TFLite models. It does not silently fall back to EasyOCR or the earlier red-pixel dial heuristic. If the model files are not installed, the API reports `models_missing` and suppresses a candidate reading. The digit model in the pinned release returns 10 outputs and is decoded as the upstream `DoubleHyprid10` model (adjacent-neuron interpolation); the analog model returns two outputs. Per-channel register/dial geometry still needs calibration and field validation. The current broad digit-register ROI is divided into equal-width cells; meters with uneven digit spacing will need individual digit ROI calibration in the next refinement. The SQLite review history and manual acceptance workflow remain in place. Do not use readings for billing until the exact meter type, alignment, ROI boundaries, dial direction and output accuracy are validated against labeled captures.
 
-- `src/watermeter/pipeline.py`: image loading, fixed-family register crop, dial heuristic pipeline.
-- `src/watermeter/dials.py`: red pointer angle estimation baseline.
-- `src/watermeter/reading.py`: reading validation helpers.
-- `configs/meter_profile.example.json`: approximate starting geometry only.
-- `scripts/export_rois.py`: exports register and dial crops for visual inspection.
-- `docs/dataset_protocol.md`: collection, annotation and split rules.
-- `firmware/esp32_cam/README.md`: AI Thinker camera integration plan.
-- `tests/`: initial validation tests.
+## AI-on-the-edge-device model setup
 
-## PC setup (Windows PowerShell)
-
-```powershell
-py -3.11 -m venv .venv
-.venv\Scripts\activate
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-Put calibration images in `data/raw/` (not committed by default), then export crops:
+Install the LiteRT runtime and download the pinned upstream models once:
 
 ```powershell
-python scripts/export_rois.py --image data/raw/meter.jpg --profile configs/meter_profile.example.json --out runs/rois
-```
-
-Run the baseline:
-
-```powershell
-python -m src.watermeter.cli --image data/raw/meter.jpg --profile configs/meter_profile.example.json --out runs/result.json
-```
-
-
-## Run the PC image-upload application (first milestone)
-
-The interactive PC prototype is now available in `app.py`. It accepts a photo, lets you adjust the five-wheel register ROI, runs pretrained EasyOCR on that crop, marks the approximate dial regions with OpenCV, and exports a JSON result.
-
-Install and launch:
-
-```powershell
-py -3.11 -m venv .venv
-.venv\\Scripts\\Activate.ps1
-python -m pip install --upgrade pip
+.venv\Scripts\Activate.ps1
 pip install -r requirements-pc.txt
-streamlit run app.py
+python scripts/download_ai_edge_models.py
 ```
 
-See [docs/pc_quickstart.md](docs/pc_quickstart.md) for the test procedure. EasyOCR downloads pretrained weights on first run. This is a PC OCR/CV prototype, not yet a custom-trained water-meter model. It deliberately does not calculate the fractional dial contribution until the four dial scales and pointer directions are calibrated. Every result must be manually checked.
+Models are stored under `models/ai-on-the-edge-device/v16.1.0`. After this one-time setup, the recognition inference is local/offline. Model readiness is available at `GET /api/recognition/models`. See [docs/ai_on_the_edge_pc_integration.md](docs/ai_on_the_edge_pc_integration.md) for the model and calibration details.
 
+## Offline camera network
 
-## Important status
+The recommended deployment uses the laptop's Windows Mobile Hotspot as one private local Wi-Fi network. Each ESP32-CAM joins the network and exposes an independent MJPEG stream. The PC performs all recognition; cameras only capture and stream video.
 
-This is an initial software baseline, **not a trained OCR model**. The digit recognizer is not implemented/trained yet. The dial estimator is heuristic and uncalibrated. The current profile coordinates are approximate and must be re-measured after the final rigid camera mount is installed. The pipeline intentionally returns `needs_review` and a null reading rather than fabricating a result.
+- Firmware: [esp32_cam/WaterMeterVision_HTTP_Stream](esp32_cam/WaterMeterVision_HTTP_Stream/WaterMeterVision_HTTP_Stream.ino)
+- Camera IP/URL configuration: [configs/camera_channels.json](configs/camera_channels.json)
+- Network setup: [docs/eight_camera_local_http_architecture.md](docs/eight_camera_local_http_architecture.md)
+- React dashboard setup: [docs/react_control_center.md](docs/react_control_center.md)
 
-## Development roadmap
+Example IPs are `192.168.137.201`–`192.168.137.208`; confirm the laptop hotspot gateway/subnet with `ipconfig` and check that addresses are unused before assigning them.
 
-1. Obtain straight-on images from the final fixed camera mount.
-2. Calibrate the meter face, register ROI and dial centers/radii.
-3. Collect many verified images from distinct physical meters of this same family.
-4. Train a compact digit classifier with explicit wheel-transition handling.
-5. Calibrate dial angle-to-value mapping and reading carry/rollover logic.
-6. Evaluate exact full-reading accuracy, litre error, false-accept rate and abstention rate.
-7. Quantize and benchmark on the exact AI Thinker ESP32-CAM (flash, free heap, PSRAM, tensor arena and latency).
-8. If the original ESP32 cannot meet the measured resource budget, evaluate ESP32-S3 with PSRAM.
+**Current bench setup:** the dashboard supports eight logical meter channels. When configured in shared-stream demo mode, those channels display the same physical ESP32-CAM feed while retaining separate meter IDs and calibration. This is not equivalent to eight independent cameras.
 
-## Edge hardware constraints
+## Run locally (Windows PowerShell)
 
-Do not target a YOLO detector on the original AI Thinker ESP32-CAM. The practical first edge candidate is fixed geometry + classical image processing + a very small INT8 digit classifier. During data collection, the ESP32-CAM can upload JPEG images to a PC for annotation and training.
-
-## Primary reference data (user-supplied meter photos)
-
-The primary calibration inputs are the two real photographs supplied by the user, not images rendered from the certificate PDF and not the manufacturer's unrelated gallery shots:
-
-- Close: `WhatsApp Image 2026-11-12 at 3.15.33 PM.jpeg`
-- Wide: `WhatsApp Image 2026-11-12 at 3.15.32 PM.jpeg`
-
-Keep these two source photos in `data/reference/` locally (they are not committed). The PC app has a separate manually measured preset for each framing in `configs/reference_presets.json`. Upload the corresponding original photo and select its matching preset. Do not apply one photo's normalized coordinates to the other.
-
-The NWM SJ-LFC/SJ-WDC PDF is specification/geometry evidence only. Do not render its pages and add them to the photographic dataset. Manufacturer catalogue photographs are not substitutes for the user's actual meter images and are not part of the primary calibration set.
-
-The optional manufacturer-gallery downloader is kept separate for product appearance inspection only:
+Backend:
 ```powershell
-python scripts/download_nwm_sj_lfc_real_photos.py
+.venv\Scripts\Activate.ps1
+pip install -r requirements-pc.txt
+uvicorn backend.api:app --host 127.0.0.1 --port 8000
 ```
-Do not use those gallery images as the user's calibration images or as labeled training data.
 
-## Dataset rules
-
-Split by physical meter ID, never by random frames from the same meter. Include all digits and transitions, all dial positions around 360°, and realistic glare, shadow, dirt, blur and lighting changes. Do not use unvalidated readings for billing.
-
-## Digit recognition training (new)
-
-The repository now includes a compact PC-trained CNN for the five odometer windows:
-- `src/watermeter/digit_model.py`: compact 32x48 grayscale CNN.
-- `training/train_digits.py`: supervised training with meter-ID grouped splitting and per-digit + full-register exact-match evaluation.
-- `src/watermeter/digit_inference.py`: five-digit inference from a trained checkpoint.
-- `training/export_onnx.py`: ONNX export.
-- `docs/annotation_template.csv`: starter annotation schema.
-
-Install training dependencies:
-
+Frontend:
 ```powershell
-pip install -r requirements-train.txt
+cd frontend
+npm install
+npm run dev
 ```
 
-Create `data/labels/digit_labels.csv` using the schema in `training/README.md`, then train:
+Open `http://127.0.0.1:5173`.
 
-```powershell
-python training/train_digits.py --csv data/labels/digit_labels.csv --profile configs/meter_profile.example.json --epochs 40 --out models/digit_cnn
-```
+## Reference and implementation boundary
 
-Run inference once a checkpoint exists:
+The PC inference adapter uses the upstream AI-on-the-edge-device pretrained TFLite model files downloaded by the user from the official v16.1.0 repository. The upstream license remains applicable to those model files; see [docs/ai_on_the_edge_pc_integration.md](docs/ai_on_the_edge_pc_integration.md) before redistribution or commercial deployment.
 
-```powershell
-python -m src.watermeter.cli --image data/raw/meter.jpg --profile configs/meter_profile.example.json --checkpoint models/digit_cnn/best.pt --out runs/result.json
-```
+## Brand
 
-The CLI still forces `needs_review` and null `reading_m3`: fractional dial calibration, rollover logic and end-to-end validation are not complete. Training code is ready, but no model weights or accuracy claims exist until a labeled dataset is supplied and training is run.
-
-
-## Fixed-camera approval prototype (current decision)
-
-No additional user photographs are required for the initial approval prototype. Use the two existing reference photographs as the only initial samples and assume a rigid, fixed camera-to-meter distance and fixed meter orientation.
-
-The five black odometer windows are provisionally labeled 00000 in both references. This is a provisional visual label, not a verified billing record. The four fractional dial values remain unverified.
-
-To create mild preprocessing robustness variants after placing the two existing photos in data/reference:
-
-```powershell
-python training/augment_reference.py --input data/reference --output data/augmented_reference --variants 20
-```
-
-Augmented copies are correlated views of the same two source photos. They are for testing crop/illumination stability only, not for training a general 0-9 classifier or claiming accuracy.
-
-Read docs/current_data_limitations.md before interpreting any results. The current goal is a fixed-layout PC proof of concept and a camera-capture demonstration for project approval. Production-grade digit recognition across tens of thousands of meters cannot be validated from two photographs of one physical meter.
-
-## Corrected reference-photo calibration (2026-11-15)
-
-The PC app uses the two user-supplied reference photographs as its primary calibration data:
-
-- Close framing: `WhatsApp Image 2026-11-12 at 3.15.33 PM.jpeg`
-- Wide framing: `WhatsApp Image 2026-11-12 at 3.15.32 PM.jpeg`
-
-The manually measured, separate presets are stored in `configs/reference_presets.json`. Upload each original photo and select its matching preset. The green register rectangle covers the five black digit windows; orange circles mark the four fractional dial faces. Do not use manufacturer-gallery images or PDF page renders in place of these photos.
-
-The five black odometer digits were provisionally read as `00000` by the user. The user's provisional fractional dial interpretation was `0.0899 m³`; it is not model-validated ground truth. The four pointer-angle mappings and transition/rollover behavior still require validation.
-
-These two photographs show one physical meter only. They are sufficient for photo-specific ROI calibration and a controlled PC proof of concept, not for training or claiming a generalized digit-recognition model. Keep the original photos unchanged and store them locally under `data/reference/`.
-
-<img width="1536" height="1024" alt="a3ebfa6d-b555-4eca-8ec5-3ea021c1e369" src="https://github.com/user-attachments/assets/1e7c8c93-75a4-40b6-a3ac-6616263184b1" />
-
+**RAGURA WM** · **PhotonX**  
+Copyright © 2026 — PhotonX
