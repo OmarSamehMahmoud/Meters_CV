@@ -4,7 +4,7 @@ import {
   Activity, AlertTriangle, Aperture, ArrowDownRight, ArrowUpRight, Bell, Check,
   ChevronRight, CircleHelp, Clock3, Command, Cpu, Download, Droplets, Gauge,
   LayoutDashboard, Menu, MoreHorizontal, Play, Radio, RefreshCw, Search,
-  Settings2, ShieldCheck, SlidersHorizontal, Sparkles, Wifi, WifiOff, X, Zap, Sun, Moon, Languages
+  Settings2, ShieldCheck, Sparkles, Wifi, WifiOff, X, Zap, Sun, Moon, Languages
 } from "lucide-react";
 
 const API = "http://127.0.0.1:8000/api";
@@ -16,7 +16,7 @@ function Metric({ icon: Icon, label, value, detail, tone = "mint" }) {
   return <div className="metric-card"><div className={`metric-icon ${tone}`}><Icon size={18}/></div><div className="metric-copy"><span>{label}</span><strong>{value}</strong><small>{detail}</small></div><div className="metric-spark"><Activity size={26}/></div></div>;
 }
 
-function CameraCard({ camera, frameTick, frameSourceId, onTrigger, onConfigure, busy, lang }) {
+function CameraCard({ camera, frameTick, frameSourceId, onTrigger, busy, lang }) {
   const online = camera.online;
   const result = camera.result;
   const reading = result?.candidate_reading_m3;
@@ -34,7 +34,7 @@ function CameraCard({ camera, frameTick, frameSourceId, onTrigger, onConfigure, 
     </div>
     <div className="reading-row"><div><span className="eyebrow">{t("LATEST REGISTER VALUE","آخر قراءة للعداد")}</span><div className="reading-value">{fmt(reading)} <small>m³</small></div></div><div className={`result-state ${result?.status === "experimental_candidate" ? "review-ok" : "review"}`}>{result?.status === "experimental_candidate" ? <Check size={13}/> : <AlertTriangle size={13}/>} {result ? (result.status === "experimental_candidate" ? t("Candidate","قراءة مرشحة") : t("Review","تحتاج مراجعة")) : t("Not read","لم تتم القراءة")}</div></div>
     <div className="camera-meta"><span><Gauge size={13}/> {t("Register","الأرقام")} <b>{result?.integer_digits || "— — — — —"}</b></span><span><Activity size={13}/> OCR <b>{result ? Math.round(result.ocr_confidence * 100) + "%" : "—"}</b></span></div>
-    <div className="card-actions"><button className="btn-primary" onClick={() => onTrigger(camera.id)} disabled={!online || busy}>{busy ? <RefreshCw className="spin" size={15}/> : <Play size={14} fill="currentColor"/>}{busy ? t("ANALYZING","جارٍ التحليل") : t("TRIGGER READ","ابدأ القراءة")}</button><button className="btn-icon" onClick={() => onConfigure(camera)} title={t("Configure station","إعداد الكاميرا")}><SlidersHorizontal size={16}/></button><button className="btn-icon" onClick={() => result && downloadResult(camera)} title={t("Export result","تصدير النتيجة")} disabled={!result}><Download size={16}/></button></div>
+    <div className="card-actions"><button className="btn-primary" onClick={() => onTrigger(camera.id)} disabled={!online || busy}>{busy ? <RefreshCw className="spin" size={15}/> : <Play size={14} fill="currentColor"/>}{busy ? t("ANALYZING","جارٍ التحليل") : t("TRIGGER READ","ابدأ القراءة")}</button><button className="btn-icon" onClick={() => result && downloadResult(camera)} title={t("Export result","تصدير النتيجة")} disabled={!result}><Download size={16}/></button></div>
   </article>;
 }
 
@@ -42,32 +42,6 @@ function downloadResult(camera) {
   const blob = new Blob([JSON.stringify(camera.result, null, 2)], {type:"application/json"});
   const url = URL.createObjectURL(blob); const a = document.createElement("a");
   a.href = url; a.download = `${camera.id}-reading.json`; a.click(); URL.revokeObjectURL(url);
-}
-
-function CalibrationDrawer({ camera, onClose, onSave, lang }) {
-  const [roi, setRoi] = useState([0.18,0.35,0.82,0.67]);
-  const [dials, setDials] = useState([]);
-  const [saving, setSaving] = useState(false);
-  const t = (en, ar) => tr(lang, en, ar);
-  useEffect(() => {
-    let active = true;
-    fetch(`${API}/cameras/${camera.id}/calibration`).then(r => r.ok ? r.json() : null).then(data => {
-      if (active && data) { setRoi(data.roi); setDials(data.dials); }
-    }).catch(() => {});
-    return () => { active = false; };
-  }, [camera.id]);
-  const updateDial = (index, key, value) => setDials(prev => prev.map((d,i) => i !== index ? d : key === "radius" ? {...d, radius:Number(value)} : {...d, center:d.center.map((v,j)=>j === (key === "cx" ? 0 : 1) ? Number(value) : v)}));
-  const save = async () => {
-    setSaving(true);
-    try { await onSave(camera.id, {roi, dials}); onClose(); } finally { setSaving(false); }
-  };
-  return <div className="drawer-backdrop" onMouseDown={e => e.target === e.currentTarget && onClose()}><aside className="calibration-drawer">
-    <div className="drawer-head"><div><span className="eyebrow">{t("STATION CONFIGURATION","إعداد المحطة")}</span><h2>{camera.name}</h2><p>{t("Independent geometry calibration","معايرة مستقلة لأبعاد العداد")}</p></div><button className="btn-icon" onClick={onClose}><X size={18}/></button></div>
-    <div className="drawer-section"><h4><Aperture size={15}/> {t("Register window · ROI","منطقة قراءة العداد · ROI")}</h4><p>{t("Normalized coordinates from 0 to 1.","إحداثيات نسبية من 0 إلى 1.")}</p>{[t("Left","يسار"),t("Top","أعلى"),t("Right","يمين"),t("Bottom","أسفل")].map((label,i)=><label className="range-row" key={label}><span>{label}</span><input type="range" min="0" max="1" step=".001" value={roi[i]} onChange={e=>setRoi(prev=>prev.map((v,j)=>j===i?Number(e.target.value):v))}/><output>{roi[i].toFixed(3)}</output></label>)}</div>
-    <div className="drawer-section"><h4><Gauge size={15}/> {t("Rotary dial geometry","إعدادات البكرات")}</h4>{dials.map((dial,i)=><div className="dial-config" key={dial.name}><strong>{dial.name}</strong>{[{key:"cx",label:t("Center X","المركز X"),value:dial.center?.[0]},{key:"cy",label:t("Center Y","المركز Y"),value:dial.center?.[1]},{key:"radius",label:t("Radius","نصف القطر"),value:dial.radius}].map(item=><label className="range-row" key={item.key}><span>{item.label}</span><input type="range" min="0" max={item.key==="radius" ? ".2" : "1"} step=".001" value={item.value ?? 0} onChange={e=>updateDial(i,item.key,e.target.value)}/><output>{Number(item.value ?? 0).toFixed(3)}</output></label>)}</div>)}</div>
-    <div className="drawer-note"><AlertTriangle size={16}/> {t("Calibration is saved locally in data/meter_calibrations.json and survives backend restarts.","يتم حفظ المعايرة محليًا في data/meter_calibrations.json وتظل محفوظة بعد إعادة تشغيل الخادم.")}</div>
-    <div className="drawer-footer"><button className="btn-secondary" onClick={onClose}>{t("Cancel","إلغاء")}</button><button className="btn-primary" onClick={save} disabled={saving || dials.length !== 4}>{saving ? t("SAVING…","جارٍ الحفظ…") : t("SAVE CALIBRATION","حفظ المعايرة")}</button></div>
-  </aside></div>;
 }
 
 export default function App() {
@@ -81,7 +55,6 @@ export default function App() {
   const [frameTick, setFrameTick] = useState(Date.now());
   const [busy, setBusy] = useState({});
   const [batchBusy, setBatchBusy] = useState(false);
-  const [selected, setSelected] = useState(null);
   const [toast, setToast] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
@@ -107,11 +80,6 @@ export default function App() {
     try {const res=await fetch(`${API}/trigger-all`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({workers})});const body=await res.json();if(!res.ok)throw new Error(body.detail||"Batch failed");setToast(t(`Batch finished · ${body.processed} channels processed`, `اكتملت المعالجة · ${body.processed} محطة`));await refresh();}
     catch(e){setToast(e.message)} finally{setBatchBusy(false)}
   };
-  const saveCalibration = async (id, calibration) => {
-    const res=await fetch(`${API}/cameras/${id}/calibration`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(calibration)});
-    const body=await res.json();if(!res.ok)throw new Error(body.detail||"Could not save calibration");setToast(t("Station calibration saved","تم حفظ معايرة المحطة"));
-  };
-
   const channels = useMemo(()=>data.channels.filter(c=>(filter==="all" || (filter==="online" ? c.online : !c.online)) && `${c.name} ${c.meter_id} ${c.ip_label}`.toLowerCase().includes(query.toLowerCase())),[data.channels,filter,query]);
   const completed = data.channels.filter(c=>c.result).length;
   const candidate = data.channels.filter(c=>c.result?.status==="experimental_candidate").length;
@@ -141,13 +109,12 @@ export default function App() {
         <section className="section-heading"><div><div className="overline">{t("NETWORK OVERVIEW","نظرة عامة على الشبكة")}</div><h2>{t("Camera stations","محطات الكاميرات")} <span className="count-tag">{data.total_channels||8} {t("CHANNELS","قنوات")}</span></h2><p>{t("Monitor live feeds and trigger meter recognition on demand.","راقب البث المباشر وابدأ التعرف على قراءة العداد عند الحاجة.")}</p></div><div className="heading-actions"><div className="search-box"><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder={t("Search stations…","ابحث عن محطة…")}/><Command size={13}/></div><button className="btn-secondary compact" onClick={refresh}><RefreshCw size={14}/> {t("Refresh","تحديث")}</button></div></section>
         <div className="filter-row"><div className="filter-tabs">{[["all",t("All stations","كل المحطات")],["online",t("Online","متصلة")],["offline",t("Offline","غير متصلة")]].map(([v,label])=><button key={v} className={filter===v?"selected":""} onClick={()=>setFilter(v)}>{label}<span>{v==="all"?data.channels.length:data.channels.filter(c=>v==="online"?c.online:!c.online).length}</span></button>)}</div><div className="worker-control"><span>{t("PARALLEL WORKERS","مهام متوازية")}</span><select value={workers} onChange={e=>setWorkers(Number(e.target.value))}><option value={1}>1</option><option value={2}>2</option><option value={4}>4</option><option value={8}>8</option></select><span className="worker-info" title={t("OCR access is serialized for stability","يتم تنظيم وصول OCR لضمان الاستقرار")}><CircleHelp size={14}/></span></div></div>
 
-        <section className="camera-grid">{channels.map(camera=><CameraCard key={camera.id} camera={camera} frameTick={frameTick} frameSourceId={data.mode === "demo_shared_stream" ? "cam_01" : camera.id} busy={busy[camera.id] || batchBusy} onTrigger={trigger} onConfigure={setSelected} lang={lang}/>)}</section>
+        <section className="camera-grid">{channels.map(camera=><CameraCard key={camera.id} camera={camera} frameTick={frameTick} frameSourceId={data.mode === "demo_shared_stream" ? "cam_01" : camera.id} busy={busy[camera.id] || batchBusy} onTrigger={trigger} lang={lang}/>)}</section>
         {channels.length===0 && <div className="empty-state">{t("No stations match your search.","لا توجد محطات تطابق البحث.")}</div>}
         <footer className="page-footer"><span>RAGURA WM <b>·</b> {t("LOCAL-FIRST EDGE PLATFORM","منصة معالجة محلية")}</span><span><span className={apiOnline?"pulse-dot":"pulse-dot danger"}/> {apiOnline?t("API CONNECTED","الخادم متصل"):t("WAITING FOR API","في انتظار الخادم")} <b>·</b> {t("EXPERIMENTAL CV OUTPUT","نتائج رؤية حاسوبية تجريبية")}</span></footer>
         </>}
       </div>
     </main>
-    {selected && <CalibrationDrawer camera={selected} onClose={()=>setSelected(null)} onSave={saveCalibration} lang={lang}/>}
     {toast && <div className="toast"><Sparkles size={16}/>{toast}<button onClick={()=>setToast("")}><X size={14}/></button></div>}
   </div>;
 }
