@@ -6,13 +6,13 @@ repository on the PC. ESP32-CAM devices remain HTTP/MJPEG cameras only.
 
 ## What is integrated
 
-- Digit model: `dig-cont_0900_s3_q.tflite` (100 output classes representing 0.0–9.9 wheel positions).
+- Digit model: `dig-cont_0900_s3_q.tflite` (10-output `DoubleHyprid10` model; the adjacent-neuron interpolation reproduces the upstream firmware's continuous wheel position).
 - Analog model: `ana-cont_1500_s2_q.tflite` (two outputs interpreted as a pointer phase).
 - Release pin: `v16.1.0`.
 - Runtime: Google AI Edge LiteRT Python interpreter.
 - Model files are downloaded from the official repository into the local `models/` folder; they are not copied into Git history.
 
-The PC-side adapter follows the upstream input convention: crop the configured ROI,
+The PC-side adapter detects the 10-output `DoubleHyprid10` tensor and ports the upstream firmware decoder: select the strongest digit neuron, compare the adjacent digit neurons, and interpolate the continuous wheel position using their relative outputs. It also retains support for 100-output `Digit100` models. The adapter follows the upstream input convention: crop the configured ROI,
 resize it to the model's input tensor dimensions, convert BGR to RGB, and feed
 channel values in the 0–255 range. Integer tensor quantization is handled from the
 model's own tensor metadata.
