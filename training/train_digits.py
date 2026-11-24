@@ -32,8 +32,9 @@ def crop_five_digits(image_path, profile, overlap=0.08):
     return crops
 
 class MeterDigitDataset(Dataset):
-    def __init__(self, frame, profile):
+    def __init__(self, frame, profile, training=False):
         self.samples=[]
+        self.training=training
         for row in frame.to_dict("records"):
             labels=[int(row[f"digit_{i}"]) for i in range(1,6)]
             crops=crop_five_digits(row["image_path"],profile)
@@ -48,15 +49,43 @@ class MeterDigitDataset(Dataset):
         return x,torch.tensor(label,dtype=torch.long)
 
 def split_frame(df):
-    if "split" in df.columns and df["split"].fillna("").astype(str).str.len().gt(0).all():
-        return (df[df.split=="train"],df[df.split=="val"],df[df.split=="test"])
-    groups=df["meter_id"].astype(str) if "meter_id" in df else df["image_path"].astype(str)
-    if groups.nunique()<3:
-        raise SystemExit("Need at least 3 distinct meter_id groups for train/validation/test without meter leakage. Prefer many more.")
-    train_idx=next(GroupShuffleSplit(n_splits=1,test_size=0.30,random_state=SEED).split(df,groups=groups))
-    temp=df.iloc[temp_idx]; temp_groups=groups.iloc[temp_idx]
-    val_rel,test_rel=next(GroupShuffleSplit(n_splits=1,test_size=0.50,random_state=SEED).split(temp,groups=temp_groups))
-    return df.iloc[train_idx],temp.iloc[val_rel],temp.iloc[test_rel]
+    """Split by physical meter so images of one meter never leak across sets."""
+    if "split" in df.columns:
+        labels = df["split"].fillna("").astype(str).str.strip().str.lower()
+        supplied = labels.ne("")
+        if supplied.any():
+            if not supplied.all():
+                raise ValueError("If any split values are supplied, every row must be labeled train, val, or test.")
+            unknown = set(labels.unique()) - {"train", "val", "test"}
+            if unknown:
+                raise ValueError(f"Unsupported split labels: {sorted(unknown)}")
+            parts = tuple(df.loc[labels == name].copy() for name in ("train", "val", "test"))
+            if any(part.empty for part in parts):
+                raise ValueError("Explicit split must contain non-empty train, val, and test partitions.")
+            if "meter_id" in df:
+                owners = [{str(value) for value in part["meter_id"]} for part in parts]
+                if any(owners[i] & owners[j] for i in range(3) for j in range(i + 1, 3)):
+                    raise ValueError("Physical meter_id leakage detected across explicit splits.")
+            return parts
+
+    groups = df["meter_id"].fillna("").astype(str) if "meter_id" in df else df["image_path"].astype(str)
+    if groups.eq("").any():
+        raise ValueError("Every row needs a non-empty meter_id for group-safe splitting.")
+    if groups.nunique() < 3:
+        raise ValueError("Need at least 3 distinct meter_id groups for train/validation/test without meter leakage; more meters are strongly recommended.")
+    train_idx, temp_idx = next(
+        GroupShuffleSplit(n_splits=1, test_size=0.30, random_state=SEED).split(df, groups=groups)
+    )
+    temp = df.iloc[temp_idx]
+    temp_groups = groups.iloc[temp_idx]
+    val_rel, test_rel = next(
+        GroupShuffleSplit(n_splits=1, test_size=0.50, random_state=SEED).split(temp, groups=temp_groups)
+    )
+    parts = (df.iloc[train_idx].copy(), temp.iloc[val_rel].copy(), temp.iloc[test_rel].copy())
+    owners = [{str(value) for value in part["meter_id"]} for part in parts] if "meter_id" in df else []
+    if owners and any(owners[i] & owners[j] for i in range(3) for j in range(i + 1, 3)):
+        raise RuntimeError("Internal error: physical meter_id leakage after group split.")
+    return parts
 
 def main():
     ap=argparse.ArgumentParser()
@@ -64,8 +93,17 @@ def main():
     ap.add_argument("--epochs",type=int,default=40); ap.add_argument("--batch-size",type=int,default=64)
     ap.add_argument("--out",default="models/digit_cnn")
     a=ap.parse_args(); seed_all()
-    df=pd.read_csv(a.csv).dropna(subset=[f"digit_{i}" for i in range(1,6)]).copy()
+    df=pd.read_csv(a.csv)
+    required=["image_path","meter_id",*[f"digit_{i}" for i in range(1,6)]]
+    missing=[column for column in required if column not in df.columns]
+    if missing: raise SystemExit(f"CSV is missing required columns: {missing}")
+    if df[["image_path","meter_id"]].isna().any().any():
+        raise SystemExit("image_path and meter_id must be present on every labeled row.")
+    df=df.dropna(subset=[f"digit_{i}" for i in range(1,6)]).copy()
     if len(df)<10: raise SystemExit("Need at least 10 fully labeled meter images; preferably hundreds/thousands across many physical meters.")
+    df["image_path"]=df["image_path"].astype(str)
+    if df["image_path"].duplicated().any():
+        raise SystemExit("Duplicate image_path entries found; each source image should appear once in the label CSV.")
     for c in [f"digit_{i}" for i in range(1,6)]:
         df[c]=df[c].astype(int)
         if not df[c].between(0,9).all(): raise ValueError(f"{c} must contain only digits 0..9")
@@ -73,10 +111,12 @@ def main():
     train_df,val_df,test_df=split_frame(df)
     if min(len(train_df),len(val_df),len(test_df))==0:
         raise SystemExit("Group split produced an empty partition. Add more distinct meter_id values or supply explicit split values.")
-    train_ds=MeterDigitDataset(train_df,profile); train_ds.training=True
-    val_ds=MeterDigitDataset(val_df,profile); val_ds.training=False
-    test_ds=MeterDigitDataset(test_df,profile); test_ds.training=False
+    train_ds=MeterDigitDataset(train_df,profile,training=True)
+    val_ds=MeterDigitDataset(val_df,profile,training=False)
+    test_ds=MeterDigitDataset(test_df,profile,training=False)
     device="cuda" if torch.cuda.is_available() else "cpu"
+    if min(len(train_ds),len(val_ds),len(test_ds)) == 0:
+        raise SystemExit("A split produced no digit crops. Add labeled images and distinct physical meters.")
     train_loader=DataLoader(train_ds,batch_size=a.batch_size,shuffle=True)
     val_loader=DataLoader(val_ds,batch_size=a.batch_size)
     test_loader=DataLoader(test_ds,batch_size=a.batch_size)
