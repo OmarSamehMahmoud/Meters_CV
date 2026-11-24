@@ -12,6 +12,7 @@ import cv2
 import easyocr
 import numpy as np
 
+from src.watermeter.digit_reader import split_register_cells, compose_digit_cells
 from src.watermeter.camera_stream import LatestFrameCamera
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -54,22 +55,35 @@ def dial_geometry(dial, w, h):
             max(5, int(round(dial["radius"] * min(w, h)))))
 
 
-def read_digits(crop):
-    if crop.size == 0:
-        return "", []
-    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-    gray = cv2.resize(gray, None, fx=2.5, fy=2.5, interpolation=cv2.INTER_CUBIC)
-    gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4)).apply(gray)
-    with OCR_LOCK:
-        results = get_reader().readtext(gray, allowlist="0123456789", detail=1,
-            paragraph=False, text_threshold=0.35, low_text=0.25, link_threshold=0.25)
-    found = []
-    for box, text, confidence in results:
-        digits = "".join(c for c in text if c.isdigit())
-        if digits:
-            found.append((min(p[0] for p in box), digits, float(confidence)))
-    found.sort(key=lambda x: x[0])
-    return "".join(x[1] for x in found), found
+def read_digits(crop, expected_digits=5):
+    """Read each fixed-width register cell independently with EasyOCR."""
+    digit_crops = split_register_cells(crop, expected_digits=expected_digits, overlap=0.08)
+    if not digit_crops:
+        return "", [], []
+    cells, found = [], []
+    for index, digit_crop in enumerate(digit_crops):
+        gray = cv2.cvtColor(digit_crop, cv2.COLOR_BGR2GRAY)
+        gray = cv2.resize(gray, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)
+        gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4)).apply(gray)
+        with OCR_LOCK:
+            results = get_reader().readtext(gray, allowlist="0123456789", detail=1,
+                paragraph=False, text_threshold=0.35, low_text=0.25, link_threshold=0.25)
+        candidates = []
+        for _box, raw_text, confidence in results:
+            token = "".join(char for char in raw_text if char.isdigit())
+            if len(token) == 1:
+                candidates.append((token, float(confidence)))
+        candidates.sort(key=lambda item: item[1], reverse=True)
+        digit, confidence = candidates[0] if candidates else (None, 0.0)
+        status = "read" if digit and confidence >= 0.35 else (
+            "low_confidence" if digit else "unreadable")
+        cell = {"position": index + 1, "digit": digit,
+                "confidence": round(confidence, 4), "status": status}
+        cells.append(cell)
+        if digit:
+            found.append((index + 1, digit, confidence))
+    digits, complete = compose_digit_cells(cells)
+    return digits, found, cells
 
 
 def detect_pointer(image, dial):
@@ -167,20 +181,23 @@ def analyze(frame, roi, dials, channel_id, alignment=None):
     x1, y1, x2, y2 = pixel_roi(roi, w, h)
     if x2 <= x1 or y2 <= y1:
         raise ValueError("Invalid digit ROI. Adjust channel calibration.")
-    digits, ocr = read_digits(frame[y1:y2, x1:x2])
+    digits, ocr, digit_cells = read_digits(frame[y1:y2, x1:x2])
     pointers = [detect_pointer(frame, dial) for dial in dials]
     valid = [p for p in pointers if p["value"] is not None and p["confidence"] >= .7]
     fractional = sum(p["value"] * WEIGHTS[p["name"].lower()] for p in valid)
-    all_valid = len(digits) == 5 and len(valid) == 4
+    _, all_digits_confident = compose_digit_cells(digit_cells)
+    all_valid = len(digits) == 5 and all_digits_confident and len(valid) == 4
     result = {
         "channel_id": channel_id,
         "status": "experimental_candidate" if all_valid else "needs_review",
-        "integer_digits": digits if len(digits) == 5 else None,
+        "integer_digits": digits if len(digits) == 5 and all_digits_confident else None,
+        "digit_cells": digit_cells,
+        "digit_recognition_mode": "five_independent_ocr_cells",
         "fractional_dials": pointers,
         "fractional_estimate_m3": round(fractional, 6) if valid else None,
         "candidate_reading_m3": round(int(digits) + fractional, 6) if all_valid else None,
         "ocr_confidence": round(float(np.mean([x[2] for x in ocr])) if ocr else 0.0, 4),
-        "ocr_raw": [{"text": x[1], "confidence": round(x[2], 4)} for x in ocr],
+        "ocr_raw": [{"position": x[0], "text": x[1], "confidence": round(x[2], 4)} for x in ocr],
         "frame_size": [w, h], "captured_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "alignment": alignment or {"status": "not_configured"},
         "warning": "Experimental only. Dial zero-angle calibration and end-to-end accuracy are not validated; do not use for billing."
