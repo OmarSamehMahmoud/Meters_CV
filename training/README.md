@@ -30,3 +30,12 @@ python training/export_onnx.py --checkpoint models/digit_cnn/best.pt --out model
 ```
 
 The ONNX model is not yet an ESP32 binary. TFLite Micro conversion and board benchmarking are a separate gated step.
+
+
+## Dataset quality gates
+
+- Every source image must have a unique path and a physical `meter_id`.
+- Automatic splitting groups by physical meter. The same meter must never appear in more than one partition.
+- If using explicit `split` labels, every row must be labeled `train`, `val`, or `test`; all three partitions must be non-empty and meter-disjoint.
+- Reported test accuracy is only meaningful when the test meters were not used for training, tuning, or augmentation.
+- No model weights are included in the repository. A real checkpoint is produced only after training on verified, labeled meter images.
