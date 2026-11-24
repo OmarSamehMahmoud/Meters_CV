@@ -19,7 +19,7 @@ Open the **Recognition Workbench** from the left navigation to:
 3. Adjust normalized digit ROI coordinates.
 4. Select each analog dial and adjust its center and radius.
 5. Save calibration locally; it survives backend restarts.
-6. Save the current camera frame as a per-meter geometric reference.\n7. Trigger recognition; when a reference exists, ORB feature matching and RANSAC estimate a similarity transform and warp the live frame into reference coordinates before ROI extraction.\n8. Inspect alignment match/inlier metrics and the candidate value, OCR confidence and warning.
+6. Save the current camera frame as a per-meter geometric reference.\n7. Trigger recognition; when a reference exists, ORB feature matching and RANSAC estimate a similarity transform and warp the live frame into reference coordinates before ROI extraction.\n8. Inspect alignment match/inlier metrics and the candidate value, digit-model confidence and warning.
 
 ### Important implementation status
 
@@ -30,7 +30,7 @@ The live trigger now routes through the original pretrained AI-on-the-edge-devic
 Install the LiteRT runtime and download the pinned upstream models once:
 
 ```powershell
-.venv\\Scripts\\Activate.ps1
+.venv\Scripts\Activate.ps1
 pip install -r requirements-pc.txt
 python scripts/download_ai_edge_models.py
 ```
