@@ -16,7 +16,7 @@ MODELS = {
 
 
 def git_blob_sha1(data: bytes) -> str:
-    header = f"blob {len(data)}\\0".encode("ascii")
+    header = f"blob {len(data)}\0".encode("ascii")
     return hashlib.sha1(header + data).hexdigest()
 
 
@@ -45,7 +45,7 @@ def main() -> int:
         temporary.replace(target)
         print(f"[OK] {filename} ({len(payload):,} bytes; Git SHA-1 verified)")
 
-    print(f"\\nModels installed in: {DESTINATION}")
+    print(f"\nModels installed in: {DESTINATION}")
     print("The recognition runtime can now run without an internet connection.")
     return 0
 
