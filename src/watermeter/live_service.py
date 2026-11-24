@@ -261,7 +261,7 @@ class LiveMeterService:
                           "automatic_acceptance": False}
             cursor = db.execute(
                 "INSERT INTO readings(channel_id,reading_m3,captured_at,status,validation_json) VALUES(?,?,?,?,?)",
-                (channel_id, float(reading), captured_at, "pending_review", json.dumps(validation)))
+                (channel_id, float(reading), captured_at, validation["status"], json.dumps(validation)))
             return {"record_id": cursor.lastrowid, **validation}
 
     def accept_reading(self, channel_id, record_id):
