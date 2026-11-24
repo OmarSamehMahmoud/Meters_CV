@@ -158,7 +158,7 @@ def _read_analog(crop: np.ndarray, counter_clockwise: bool) -> dict:
     f1, f2 = float(values[0]), float(values[1])
     phase = (math.atan2(f1, f2) / (2.0 * math.pi) + 2.0) % 1.0
     value = 10.0 - phase * 10.0 if counter_clockwise else phase * 10.0
-    return {"value": round(value % 10.0, 4), "model_outputs": [f1, f2]}
+    return {"value": round(value, 4), "model_outputs": [f1, f2]}
 
 
 def analyze_ai_edge(
