@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from src.watermeter.live_service import service
 
-app = FastAPI(title="WaterMeterVision API", version="1.0.0")
+app = FastAPI(title="RAGURA API", version="1.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
@@ -23,7 +23,7 @@ class TriggerAllPayload(BaseModel):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "WaterMeterVision"}
+    return {"status": "ok", "service": "RAGURA"}
 
 
 @app.get("/api/overview")
@@ -55,6 +55,25 @@ def set_calibration(channel_id: str, payload: CalibrationPayload):
         raise HTTPException(status_code=404, detail="Camera channel not found")
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+
+
+
+@app.post("/api/cameras/{channel_id}/alignment/reference")
+def save_alignment_reference(channel_id: str):
+    try:
+        return service.set_alignment_reference(channel_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Camera channel not found")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@app.get("/api/cameras/{channel_id}/alignment")
+def get_alignment_status(channel_id: str):
+    try:
+        return service.alignment_status(channel_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Camera channel not found")
 
 
 @app.post("/api/cameras/{channel_id}/trigger")
