@@ -22,7 +22,7 @@ model's own tensor metadata.
 From the RAGURA repository root in PowerShell:
 
 ```powershell
-.venv\\Scripts\\Activate.ps1
+.venv\Scripts\Activate.ps1
 pip install -r requirements-pc.txt
 python scripts/download_ai_edge_models.py
 ```
