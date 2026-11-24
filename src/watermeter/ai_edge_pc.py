@@ -9,7 +9,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
 MODEL_DIR = ROOT / "models" / "ai-on-the-edge-device" / "v16.1.0"
-DIGIT_MODEL = MODEL_DIR / "dig-class11_1900_s2_q.tflite"
+DIGIT_MODEL = MODEL_DIR / "dig-cont_0900_s3_q.tflite"
 ANALOG_MODEL = MODEL_DIR / "ana-cont_1500_s2_q.tflite"
 
 _lock = threading.RLock()
@@ -114,23 +114,39 @@ def _pixel_roi(roi: list[float], width: int, height: int):
     return left, top, right, bottom
 
 
-def _read_digit(crop: np.ndarray) -> dict:
+def _read_continuous_digit(crop: np.ndarray) -> dict:
     scores = _softmax(_infer(DIGIT_MODEL, crop))
-    if scores.size != 11:
+    if scores.size != 100:
         raise RuntimeError(
-            f"Expected the upstream 11-class digit model, got {scores.size} outputs."
+            f"Expected the upstream 100-output continuous digit model, got {scores.size} outputs."
         )
     index = int(np.argmax(scores))
-    confidence = float(scores[index])
-    digit = None if index == 10 else index
     return {
-        "digit": digit,
+        "continuous_value": index / 10.0,
         "class_index": index,
-        "confidence": round(confidence, 4),
-        "status": "unknown" if digit is None else (
-            "read" if confidence >= 0.35 else "low_confidence"
-        ),
+        "confidence": round(float(scores[index]), 4),
     }
+
+
+def _evaluate_hybrid_digit(number: float, predecessor: float, evaluated_predecessor: int) -> int:
+    """Port of PointerEvalHybridNew for the upstream continuous digit model."""
+    after_decimal = int(math.floor(number * 10.0)) % 10
+    before_decimal = (int(math.floor(number)) + 10) % 10
+
+    if evaluated_predecessor < 0:
+        return int(math.trunc(round(number * 100.0))) // 100
+
+    if 0.7 <= predecessor <= 9.3:
+        if after_decimal <= 3 or after_decimal >= 7:
+            return (int(round(number)) + 10) % 10
+        return (int(math.trunc(number)) + 10) % 10
+
+    if evaluated_predecessor <= 1:
+        return (before_decimal + 1) % 10 if after_decimal > 5 else before_decimal
+
+    if 9.7 >= predecessor or after_decimal >= 4:
+        return before_decimal
+    return (before_decimal - 1 + 10) % 10
 
 
 def _read_analog(crop: np.ndarray, counter_clockwise: bool) -> dict:
@@ -187,14 +203,29 @@ def analyze_ai_edge(
         left = max(0, int(round(index * cell_width)))
         right = min(register.shape[1], int(round((index + 1) * cell_width)))
         crop = register[:, left:right]
-        item = _read_digit(crop)
+        item = _read_continuous_digit(crop)
         item.update({"position": index + 1})
         digit_cells.append(item)
 
-    digits = "".join(str(item["digit"]) for item in digit_cells if item["digit"] is not None)
+    # The source firmware evaluates wheel transitions from right to left,
+    # using the adjacent lower-order wheel and its already evaluated digit.
+    evaluated = [-1] * len(digit_cells)
+    for index in range(len(digit_cells) - 1, -1, -1):
+        current = digit_cells[index]["continuous_value"]
+        if index == len(digit_cells) - 1:
+            evaluated[index] = _evaluate_hybrid_digit(current, -1.0, -1)
+        else:
+            predecessor = digit_cells[index + 1]["continuous_value"]
+            evaluated[index] = _evaluate_hybrid_digit(
+                current, predecessor, evaluated[index + 1]
+            )
+    for index, item in enumerate(digit_cells):
+        item["digit"] = evaluated[index]
+        item["status"] = "read" if item["confidence"] >= 0.20 else "low_confidence"
+
+    digits = "".join(str(item["digit"]) for item in digit_cells)
     digits_complete = len(digit_cells) == expected_digits and all(
-        item["digit"] is not None and item["confidence"] >= 0.35
-        for item in digit_cells
+        item["confidence"] >= 0.20 for item in digit_cells
     )
 
     analog_results = []
@@ -253,7 +284,7 @@ def analyze_ai_edge(
         "analog_model": ANALOG_MODEL.name,
         "integer_digits": digits if digits_complete else None,
         "digit_cells": digit_cells,
-        "digit_recognition_mode": "original_ai_on_the_edge_tflite_11_class",
+        "digit_recognition_mode": "original_ai_on_the_edge_tflite_100_class_hybrid",
         "fractional_dials": analog_results,
         "fractional_estimate_m3": round(fractional, 6) if analog_results else None,
         "candidate_reading_m3": candidate,
