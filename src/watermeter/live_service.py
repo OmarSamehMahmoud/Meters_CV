@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CHANNELS = json.loads((ROOT / "configs" / "camera_channels.json").read_text(encoding="utf-8"))["cameras"]
 PRESETS = json.loads((ROOT / "configs" / "reference_presets.json").read_text(encoding="utf-8"))["reference_presets"]
 WEIGHTS = {"x0.1": 0.1, "x0.01": 0.01, "x0.001": 0.001, "x0.0001": 0.0001}
+CALIBRATION_PATH = ROOT / "data" / "meter_calibrations.json"
 OCR_LOCK = threading.Lock()
 _reader = None
 _reader_lock = threading.Lock()
@@ -146,6 +147,25 @@ class LiveMeterService:
             if url and url not in self.cameras:
                 self.cameras[url] = LatestFrameCamera(url)
             self.calibrations[ch["id"]] = channel_geometry(ch)
+        if CALIBRATION_PATH.exists():
+            try:
+                saved = json.loads(CALIBRATION_PATH.read_text(encoding="utf-8"))
+                for channel_id, cfg in saved.items():
+                    if channel_id in self.calibrations and isinstance(cfg, dict):
+                        roi, dials = cfg.get("roi"), cfg.get("dials")
+                        if isinstance(roi, list) and len(roi) == 4 and isinstance(dials, list) and len(dials) == 4:
+                            self.calibrations[channel_id] = ([float(v) for v in roi], dials)
+            except (OSError, ValueError, TypeError):
+                pass
+
+    def _persist_calibrations(self):
+        CALIBRATION_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with self.lock:
+            snapshot = {channel_id: {"roi": list(roi), "dials": dials}
+                        for channel_id, (roi, dials) in self.calibrations.items()}
+        temporary = CALIBRATION_PATH.with_suffix(".json.tmp")
+        temporary.write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
+        temporary.replace(CALIBRATION_PATH)
 
     def camera_for(self, channel_id):
         ch = next((c for c in self.channels if c["id"] == channel_id), None)
@@ -195,6 +215,10 @@ class LiveMeterService:
             raise ValueError("ROI coordinates must be normalized between 0 and 1.")
         with self.lock:
             self.calibrations[channel_id] = ([float(v) for v in roi], dials)
+        try:
+            self._persist_calibrations()
+        except OSError as exc:
+            raise ValueError(f"Could not persist calibration: {exc}") from exc
         return {"channel_id": channel_id, "roi": roi, "dials": dials}
 
     def trigger(self, channel_id):
