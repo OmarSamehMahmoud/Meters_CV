@@ -71,7 +71,11 @@ def audit_dataset(csv_path: Path, profile_path: Path, project_root: Path = Path(
                 cell = cv2.cvtColor(crop[:, left:right], cv2.COLOR_BGR2GRAY)
                 cell = cv2.resize(cell, (64, 96), interpolation=cv2.INTER_AREA)
                 thumbs.append(cv2.cvtColor(cell, cv2.COLOR_GRAY2BGR))
-            labels = "".join(str(int(row[f"digit_{i}"])) if pd.notna(row[f"digit_{i}"]) else "?" for i in range(1, 6))
+            label_parts = []
+            for i in range(1, 6):
+                value = pd.to_numeric(pd.Series([row[f"digit_{i}"]]), errors="coerce").iloc[0]
+                label_parts.append(str(int(value)) if pd.notna(value) and float(value).is_integer() and 0 <= value <= 9 else "?")
+            labels = "".join(label_parts)
             preview_rows.append((str(row["meter_id"]), labels, thumbs))
 
     if missing_images:
